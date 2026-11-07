@@ -73,7 +73,7 @@ export function LossClarification({
     return events
       .filter((e) => {
         // Exclude pure run events from loss list
-        if (e.type === "run") return false;
+        if (e.type === "run" || e.type === "negative_speed_loss") return false;
 
         // Tab filter: Not Tagged vs Tagged vs All
         if (activeTab === "not-tagged" && e.isTagged) return false;

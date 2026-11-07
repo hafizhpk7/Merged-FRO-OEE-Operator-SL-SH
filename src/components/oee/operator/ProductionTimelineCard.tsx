@@ -1,10 +1,106 @@
-import { useState, useMemo } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Flag, Info, XCircle, Tag } from "lucide-react";
+import { useMemo, useState } from "react";
+import { AlertCircle, Check } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TIMELINE_COLORS } from "@/lib/oee/reasonConstants";
-import type { ShiftTimelineResult, MachineEvent } from "@/lib/oee/machineEvents";
+import { classifyWindow } from "@/lib/oee/windowEngine";
+import { formatTimeWib } from "@/lib/oee/shiftClock";
+import type { MachineEvent, ShiftTimelineResult, TimelineWindow } from "@/lib/oee/machineEvents";
+
+type SegKind =
+  | "effective"
+  | "negative_speed_loss"
+  | "downtime"
+  | "minor_stop"
+  | "speed_loss"
+  | "planned";
+
+type Segment = {
+  key: string;
+  kind: SegKind;
+  startSec: number; // from shift start
+  endSec: number;
+  output: number;
+  event?: MachineEvent;
+};
+
+const WINDOWS_PER_HOUR = 120;
+
+const KIND_LABEL: Record<SegKind, string> = {
+  effective: "Effective",
+  negative_speed_loss: "Negative Speed Loss",
+  downtime: "Downtime",
+  minor_stop: "Minor Stop",
+  speed_loss: "Speed Loss",
+  planned: "Planned Downtime",
+};
+
+const KIND_SWATCH: Record<SegKind, string> = {
+  effective: "bg-emerald-600",
+  negative_speed_loss: TIMELINE_COLORS.negative_speed_loss.hatched,
+  downtime: "bg-red-500",
+  minor_stop: "bg-purple-600",
+  speed_loss: "bg-amber-500",
+  planned: TIMELINE_COLORS.planned.solid,
+};
+
+function segmentClass(seg: Segment): string {
+  const tagged = seg.event?.isTagged ?? true;
+  switch (seg.kind) {
+    case "effective":
+      return "bg-emerald-600";
+    case "negative_speed_loss":
+      return TIMELINE_COLORS.negative_speed_loss.hatched;
+    case "planned":
+      return TIMELINE_COLORS.planned.solid;
+    case "downtime":
+      return tagged ? TIMELINE_COLORS.downtime.solid : "bg-red-200 dark:bg-red-950/60";
+    case "minor_stop":
+      return tagged ? TIMELINE_COLORS.minor_stop.solid : "bg-purple-200 dark:bg-purple-950/60";
+    case "speed_loss":
+      return tagged ? TIMELINE_COLORS.speed_loss.solid : "bg-amber-200 dark:bg-amber-950/60";
+  }
+}
+
+function windowKind(w: TimelineWindow): SegKind {
+  if (w.type === "downtime") return "downtime";
+  if (w.type === "minor_stop") return "minor_stop";
+  if (w.type === "speed_loss") return "speed_loss";
+  if (w.type === "planned") return "planned";
+  return classifyWindow(w.output, w.targetOutput) === "NSL" ? "negative_speed_loss" : "effective";
+}
+
+/** Merges consecutive 30 s windows of the same kind/event into contiguous segments. */
+function buildSegments(
+  windows: TimelineWindow[],
+  eventsById: Map<string, MachineEvent>,
+  hourIdx: number,
+): Segment[] {
+  const out: Segment[] = [];
+  for (const w of windows) {
+    const kind = windowKind(w);
+    const evId = kind === "effective" ? undefined : w.eventId;
+    const last = out[out.length - 1];
+    if (last && last.kind === kind && last.event?.id === evId) {
+      last.endSec = w.endSec;
+      last.output += w.output;
+      continue;
+    }
+    const event = evId ? eventsById.get(evId) : undefined;
+    out.push({
+      key: `${hourIdx}-${w.index}`,
+      kind,
+      startSec: w.startSec,
+      endSec: w.endSec,
+      output: w.output,
+      ...(event ? { event } : {}),
+    });
+  }
+  return out;
+}
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
 
 export function ProductionTimelineCard({
   timeline,
@@ -15,328 +111,290 @@ export function ProductionTimelineCard({
   onOpenPendingList: (typeFilter?: string) => void;
   onSelectEventToClassify: (event: MachineEvent) => void;
 }) {
-  const { events, windows, orders, snapshot } = timeline;
+  const { events, windows, snapshot, shift } = timeline;
+  const [activeKey, setActiveKey] = useState<string | null>(null);
 
-  // Segment D / MS / SL counts
-  const dEvents = events.filter((e) => e.type === "downtime");
-  const msEvents = events.filter((e) => e.type === "minor_stop");
-  const slEvents = events.filter((e) => e.type === "speed_loss");
+  const count = (type: MachineEvent["type"]) => {
+    const list = events.filter((e) => e.type === type);
+    return { total: list.length, pending: list.filter((e) => !e.isTagged).length };
+  };
+  const d = count("downtime");
+  const ms = count("minor_stop");
+  const sl = count("speed_loss");
+  const nsl = count("negative_speed_loss");
 
-  const dUnclassified = dEvents.filter((e) => !e.isTagged).length;
-  const msUnclassified = msEvents.filter((e) => !e.isTagged).length;
-  const slUnclassified = slEvents.filter((e) => !e.isTagged).length;
-
-  const totalPendingCount = dUnclassified + msUnclassified + slUnclassified;
-
-  // Pagination (8 hours per page max)
-  const [currentPage, setCurrentPage] = useState(1);
-  const totalHours = 8; // Standard shift duration = 8 hours
-  const hoursPerPage = 8;
-  const totalPages = Math.ceil(totalHours / hoursPerPage);
-
-  // Map 30s windows into 8 hourly rows (0..7)
-  const hourRows = useMemo(() => {
-    const rows = [];
-    const shiftStartHour = 23; // e.g., Shift 3 starts at 23:00
-
-    for (let h = 0; h < totalHours; h++) {
-      const hourLabel = `${String((shiftStartHour + h) % 24).padStart(2, "0")}:00`;
+  const rows = useMemo(() => {
+    const eventsById = new Map(events.map((e) => [e.id, e]));
+    return Array.from({ length: 8 }, (_, h) => {
       const hourStartSec = h * 3600;
-      const hourEndSec = (h + 1) * 3600;
-
-      // Filter events in this hour
-      const hourEvents = events.filter((e) => e.startSec < hourEndSec && e.endSec > hourStartSec);
-
-      // Windows in this hour (120 windows of 30s = 3600s = 60 mins)
-      const hourWindows = windows.slice(h * 120, (h + 1) * 120);
-
-      // Check if row is future / NOT STARTED
-      const isFutureRow = h >= 5; // Rows after elapsed time
-
-      rows.push({
-        hourIndex: h,
-        hourLabel,
+      const isFuture = hourStartSec >= shift.elapsedSec;
+      const hourWindows = windows.slice(h * WINDOWS_PER_HOUR, (h + 1) * WINDOWS_PER_HOUR);
+      return {
+        hourIdx: h,
+        label: formatTimeWib(shift.startSec + hourStartSec),
         hourStartSec,
-        hourEndSec,
-        hourEvents,
-        hourWindows,
-        isFutureRow,
-      });
-    }
-    return rows;
-  }, [windows, events]);
+        isFuture,
+        segments: isFuture ? [] : buildSegments(hourWindows, eventsById, h),
+      };
+    });
+  }, [windows, events, shift.elapsedSec, shift.startSec]);
 
-  const visibleRows = hourRows.slice((currentPage - 1) * hoursPerPage, currentPage * hoursPerPage);
+  const chips = [
+    { id: "downtime", letter: "D", label: "Downtime", c: d, badge: "bg-red-500" },
+    { id: "minor_stop", letter: "MS", label: "Minor Stop", c: ms, badge: "bg-purple-600" },
+    { id: "speed_loss", letter: "SL", label: "Speed Loss", c: sl, badge: "bg-amber-400" },
+    {
+      id: "negative_speed_loss",
+      letter: "NSL",
+      label: "Negative Speed Loss",
+      c: nsl,
+      badge: "bg-emerald-600",
+    },
+  ];
+
+  const legend: { label: string; cls: string }[] = [
+    { label: "Effective", cls: KIND_SWATCH.effective },
+    { label: "Downtime", cls: KIND_SWATCH.downtime },
+    { label: "Speed Loss", cls: KIND_SWATCH.speed_loss },
+    { label: "Negative Speed Loss", cls: KIND_SWATCH.negative_speed_loss },
+    { label: "No Standard", cls: "bg-slate-400" },
+    { label: "Minor Stop", cls: KIND_SWATCH.minor_stop },
+    { label: "Planned Downtime", cls: KIND_SWATCH.planned },
+    {
+      label: "Not Available/Unschedule",
+      cls: "bg-slate-100 border border-slate-200 dark:bg-slate-800",
+    },
+  ];
+
+  const ticks = Array.from({ length: 31 }, (_, i) => i * 2);
 
   return (
-    <TooltipProvider delayDuration={100}>
-      <Card className="border border-border bg-card shadow-xs">
-        <CardHeader className="space-y-4 border-b border-border pb-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-3">
-                <h2 className="text-base font-bold tracking-tight text-foreground">
-                  Production Timeline
-                </h2>
-                <button
-                  onClick={() => onOpenPendingList()}
-                  className="flex items-center gap-1.5 rounded-full border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300 transition-colors hover:bg-amber-100"
-                >
-                  <Tag className="size-3" />
-                  Pending Classifications {totalPendingCount}
-                </button>
-              </div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mt-0.5">
-                REASON CLASSIFICATION
-              </p>
-            </div>
+    <Card className="border border-border bg-card shadow-xs">
+      <CardHeader className="space-y-3 pb-2">
+        <h2 className="text-lg font-bold tracking-tight text-foreground">Production Timeline</h2>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Reason Classification
+        </p>
 
-            {/* Pagination Controls if > 8 hours */}
-            {totalPages > 1 && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="size-7"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage((p) => p - 1)}
-                >
-                  <ChevronLeft className="size-4" />
-                </Button>
-                <span className="text-xs font-mono">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="size-7"
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage((p) => p + 1)}
-                >
-                  <ChevronRight className="size-4" />
-                </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          {chips.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              onClick={() => onOpenPendingList(chip.id)}
+              data-testid={`chip-${chip.id}`}
+              className="flex min-w-48 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium shadow-2xs transition-colors hover:bg-accent"
+            >
+              <span
+                className={`flex size-6 items-center justify-center rounded text-[10px] font-bold text-white ${chip.badge}`}
+              >
+                {chip.letter}
+              </span>
+              <span>
+                {chip.label} · <strong>{chip.c.total}</strong>
+              </span>
+              <span
+                data-testid={`chip-badge-${chip.id}`}
+                data-pending={chip.c.pending}
+                className={`ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${
+                  chip.c.pending > 0
+                    ? "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300"
+                    : chip.c.total > 0
+                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                      : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {chip.c.pending > 0 ? (
+                  <>
+                    {chip.c.pending}
+                    <AlertCircle className="size-3.5" />
+                  </>
+                ) : chip.c.total > 0 ? (
+                  <Check className="size-3.5" aria-label="Selesai" />
+                ) : (
+                  0
+                )}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1 text-xs text-muted-foreground">
+          {legend.map((l) => (
+            <span key={l.label} className="flex items-center gap-1.5">
+              <span className={`h-3 w-6 rounded-xs ${l.cls}`} />
+              {l.label}
+            </span>
+          ))}
+        </div>
+      </CardHeader>
+
+      <CardContent className="pt-4">
+        <div className="space-y-3.5">
+          {rows.map((row) => (
+            <div key={row.hourIdx} className="flex items-center gap-3">
+              <span className="w-12 shrink-0 text-sm text-muted-foreground">{row.label}</span>
+              <div className="relative flex h-10 flex-1 overflow-hidden rounded-md bg-muted/30">
+                {row.isFuture ? (
+                  <div
+                    className={`flex h-full w-full items-center justify-center ${TIMELINE_COLORS.future.hatched}`}
+                  >
+                    {row.hourIdx === rows.find((r) => r.isFuture)?.hourIdx && (
+                      <span className="text-[11px] font-bold uppercase tracking-widest">
+                        Not started
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  row.segments.map((seg) => (
+                    <SegmentCell
+                      key={seg.key}
+                      seg={seg}
+                      shiftStartSec={shift.startSec}
+                      rejectRatePct={snapshot.rejectRatePct}
+                      open={activeKey === seg.key}
+                      onOpenChange={(o) => setActiveKey(o ? seg.key : null)}
+                      onClassify={(ev) => {
+                        setActiveKey(null);
+                        onSelectEventToClassify(ev);
+                      }}
+                    />
+                  ))
+                )}
               </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Minute axis */}
+        <div className="relative mt-2 ml-15 h-4 text-[11px] text-muted-foreground">
+          {ticks.map((m) => (
+            <span
+              key={m}
+              className="absolute top-0 hidden -translate-x-1/2 sm:block"
+              style={{ left: `${(m / 60) * 100}%` }}
+            >
+              :{pad2(m)}
+            </span>
+          ))}
+          <span className="absolute right-0 top-0 translate-x-1/2 hidden sm:block">:60</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SegmentCell({
+  seg,
+  shiftStartSec,
+  rejectRatePct,
+  open,
+  onOpenChange,
+  onClassify,
+}: {
+  seg: Segment;
+  shiftStartSec: number;
+  rejectRatePct: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onClassify: (event: MachineEvent) => void;
+}) {
+  const ev = seg.event;
+  const isLoss =
+    !!ev &&
+    (ev.type === "downtime" ||
+      ev.type === "minor_stop" ||
+      ev.type === "speed_loss" ||
+      ev.type === "negative_speed_loss");
+  const startSec = ev ? ev.startSec : seg.startSec;
+  const endSec = ev ? ev.endSec : seg.endSec;
+  const durationMin = Math.max(1, Math.round((endSec - startSec) / 60));
+  const classifiedMin = ev
+    ? ev.isTagged && ev.source === "PLC"
+      ? durationMin
+      : Math.min(durationMin, Math.round((ev.classifiedSec ?? 0) / 60))
+    : 0;
+  const fully = !!ev?.isTagged;
+
+  // Output over the whole event (loss) or this stretch (effective).
+  const output = ev
+    ? Math.round(
+        (seg.output * (endSec - startSec)) / Math.max(30, seg.endSec - seg.startSec),
+      )
+    : seg.output;
+  const reject = Math.round((output * rejectRatePct) / 100);
+
+  const widthPct = ((seg.endSec - seg.startSec) / 3600) * 100;
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`${KIND_LABEL[seg.kind]} ${formatTimeWib(shiftStartSec + startSec)}`}
+          style={{ width: `${widthPct}%` }}
+          className={`h-full shrink-0 cursor-pointer transition-[filter] hover:brightness-95 focus-visible:outline-2 ${segmentClass(seg)} ${
+            open ? "outline-2 -outline-offset-2 outline-foreground/70" : ""
+          }`}
+        />
+      </PopoverTrigger>
+      <PopoverContent side="bottom" align="center" className="w-80 p-0 shadow-lg">
+        <div className="space-y-3 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className={`h-3.5 w-7 rounded-xs ${KIND_SWATCH[seg.kind]}`} />
+              <span className="text-sm font-semibold text-foreground">{KIND_LABEL[seg.kind]}</span>
+            </div>
+            {isLoss && ev && (
+              <Button
+                size="sm"
+                onClick={() => onClassify(ev)}
+                className="h-8 bg-blue-900 px-4 text-xs font-semibold text-white hover:bg-blue-800"
+              >
+                {ev.source === "PLC" && ev.isTagged ? "View" : fully ? "Edit" : "Classify"}
+              </Button>
             )}
           </div>
 
-          {/* 3 Summary Chips: D, MS, SL */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Downtime Chip */}
-            <button
-              onClick={() => onOpenPendingList("downtime")}
-              className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium shadow-2xs transition-all hover:border-red-400"
-            >
-              <span className="flex size-5 items-center justify-center rounded bg-red-500 font-bold text-white text-[10px]">
-                D
-              </span>
-              <span>Downtime · {dEvents.length}</span>
+          {isLoss && (
+            <div className="flex items-center gap-2 text-xs">
               <span
-                className={`flex items-center gap-1 rounded px-1.5 py-0.2 font-mono text-[10px] font-bold ${
-                  dUnclassified > 0
-                    ? "bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300"
-                    : "bg-muted text-muted-foreground"
+                className={`rounded-md px-2 py-0.5 font-medium ${
+                  fully
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                    : "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300"
                 }`}
               >
-                {dUnclassified > 0 && <AlertTriangle className="size-3 text-amber-500" />}
-                {dUnclassified}
+                {fully ? "Classified" : "Action required"}
               </span>
-            </button>
-
-            {/* Minor Stop Chip */}
-            <button
-              onClick={() => onOpenPendingList("minor_stop")}
-              className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium shadow-2xs transition-all hover:border-purple-400"
-            >
-              <span className="flex size-5 items-center justify-center rounded bg-purple-500 font-bold text-white text-[10px]">
-                MS
+              <span className="text-muted-foreground">
+                {classifiedMin} / {durationMin} min
               </span>
-              <span>Minor Stop · {msEvents.length}</span>
-              <span
-                className={`flex items-center gap-1 rounded px-1.5 py-0.2 font-mono text-[10px] font-bold ${
-                  msUnclassified > 0
-                    ? "bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {msUnclassified > 0 && <AlertTriangle className="size-3 text-amber-500" />}
-                {msUnclassified}
-              </span>
-            </button>
-
-            {/* Speed Loss Chip */}
-            <button
-              onClick={() => onOpenPendingList("speed_loss")}
-              className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium shadow-2xs transition-all hover:border-amber-400"
-            >
-              <span className="flex size-5 items-center justify-center rounded bg-amber-500 font-bold text-white text-[10px]">
-                SL
-              </span>
-              <span>Speed Loss · {slEvents.length}</span>
-              <span
-                className={`flex items-center gap-1 rounded px-1.5 py-0.2 font-mono text-[10px] font-bold ${
-                  slUnclassified > 0
-                    ? "bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {slUnclassified > 0 && <AlertTriangle className="size-3 text-amber-500" />}
-                {slUnclassified}
-              </span>
-            </button>
-          </div>
-
-          {/* Color Legend Bar */}
-          <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-muted-foreground">
-            <div className="flex items-center gap-1.5">
-              <span className="size-3 rounded-xs bg-emerald-500" />
-              <span>Effective</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="size-3 rounded-xs bg-red-500" />
-              <span>Downtime</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="size-3 rounded-xs bg-amber-500" />
-              <span>Speed Loss</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="size-3 rounded-xs bg-purple-500" />
-              <span>Minor Stop</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="size-3 rounded-xs bg-slate-500" />
-              <span>Planned Downtime</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="size-3 rounded-xs bg-slate-200 border border-slate-300 dark:bg-slate-800" />
-              <span>Not Available / Unscheduled</span>
-            </div>
-          </div>
-        </CardHeader>
+          )}
 
-        <CardContent className="space-y-3 pt-4">
-          {/* Timeline Grid (Hour Rows) */}
-          <div className="space-y-2">
-            {visibleRows.map((row) => (
-              <div key={row.hourIndex} className="flex items-center gap-3">
-                {/* Hour Label */}
-                <span className="w-12 shrink-0 font-mono text-xs font-semibold text-muted-foreground">
-                  {row.hourLabel}
-                </span>
+          <dl className="divide-y divide-border text-xs">
+            <Row label="Time">
+              {formatTimeWib(shiftStartSec + startSec)} - {formatTimeWib(shiftStartSec + endSec)}
+            </Row>
+            <Row label="Duration">{durationMin} min</Row>
+            <Row label="Output / Reject">
+              {output} pcs ({reject} pcs)
+            </Row>
+          </dl>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
-                {/* Bar Container for 1 Hour */}
-                <div className="relative flex h-10 flex-1 items-center overflow-hidden rounded-md border border-border bg-muted/20">
-                  {row.isFutureRow ? (
-                    <div className="flex h-full w-full items-center justify-center bg-[repeating-linear-gradient(45deg,#f3f4f6,#f3f4f6_8px,#e5e7eb_8px,#e5e7eb_16px)] dark:bg-[repeating-linear-gradient(45deg,#1e293b,#1e293b_8px,#0f172a_8px,#0f172a_16px)]">
-                      {row.hourIndex === 5 && (
-                        <span className="text-[11px] font-bold tracking-widest text-muted-foreground uppercase">
-                          NOT STARTED
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    /* Contiguous Event Segments for Row */
-                    <div className="flex h-full w-full">
-                      {row.hourEvents.map((ev, evIdx) => {
-                        const isLoss =
-                          ev.type === "downtime" ||
-                          ev.type === "minor_stop" ||
-                          ev.type === "speed_loss";
-
-                        const colorClasses =
-                          ev.type === "downtime"
-                            ? ev.isTagged
-                              ? TIMELINE_COLORS.downtime.solid
-                              : TIMELINE_COLORS.downtime.tint
-                            : ev.type === "minor_stop"
-                              ? ev.isTagged
-                                ? TIMELINE_COLORS.minor_stop.solid
-                                : TIMELINE_COLORS.minor_stop.tint
-                              : ev.type === "speed_loss"
-                                ? ev.isTagged
-                                  ? TIMELINE_COLORS.speed_loss.solid
-                                  : TIMELINE_COLORS.speed_loss.tint
-                                : ev.type === "planned"
-                                  ? TIMELINE_COLORS.planned.solid
-                                  : TIMELINE_COLORS.effective.solid;
-
-                        // Width percentage in hour
-                        const widthPct = Math.max(2, Math.min(100, (ev.durationSec / 3600) * 100));
-
-                        // Deterministic PO & Reject icons
-                        const hasPoStart = evIdx === 0 && row.hourIndex === 0;
-                        const hasReject =
-                          evIdx === 1 && (row.hourIndex === 1 || row.hourIndex === 3);
-
-                        return (
-                          <Tooltip key={ev.id || evIdx}>
-                            <TooltipTrigger asChild>
-                              <div
-                                onClick={() => {
-                                  if (isLoss) {
-                                    onSelectEventToClassify(ev);
-                                  }
-                                }}
-                                style={{ width: `${widthPct}%` }}
-                                className={`relative flex h-full items-center justify-center border-r border-background/20 px-1 transition-all ${colorClasses} ${
-                                  isLoss ? "cursor-pointer hover:brightness-105" : ""
-                                }`}
-                              >
-                                {/* PO Flag Icon */}
-                                {hasPoStart && (
-                                  <span className="absolute left-1 top-1 flex size-4 items-center justify-center rounded-full bg-blue-600 text-white shadow-xs">
-                                    <Flag className="size-2.5" />
-                                  </span>
-                                )}
-
-                                {/* Reject Icon */}
-                                {hasReject && (
-                                  <span className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-red-600 text-white shadow-xs">
-                                    <XCircle className="size-2.5" />
-                                  </span>
-                                )}
-
-                                {/* Warning icon for unclassified loss */}
-                                {isLoss && !ev.isTagged && (
-                                  <AlertTriangle className="size-3.5 text-amber-600 dark:text-amber-400 animate-pulse" />
-                                )}
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="p-3 text-xs space-y-1.5 max-w-xs">
-                              <p className="font-bold text-foreground">
-                                {orders[0]?.productName || "Finished Goods"}
-                              </p>
-                              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground font-mono">
-                                <span>Batch: B2201</span>
-                                <span>Time: {Math.round(ev.durationSec / 60)} mins</span>
-                                <span>Output: {ev.type === "run" ? 120 : 0} pcs/min</span>
-                                <span>Standard: 120 ppm</span>
-                                <span>Total Output: {snapshot.totalOutput} pcs</span>
-                                <span>Total Reject: {snapshot.rejects} pcs</span>
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Bottom Time Scale Ticks */}
-          <div className="flex items-center justify-between pl-12 pt-1 font-mono text-[10px] text-muted-foreground">
-            <span>:00</span>
-            <span>:10</span>
-            <span>:20</span>
-            <span>:30</span>
-            <span>:40</span>
-            <span>:50</span>
-            <span>:60</span>
-          </div>
-        </CardContent>
-      </Card>
-    </TooltipProvider>
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between py-2">
+      <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="font-semibold text-foreground">{children}</dd>
+    </div>
   );
 }

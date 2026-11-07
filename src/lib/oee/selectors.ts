@@ -209,7 +209,8 @@ export function selectMachineNotTaggedState(
   }[],
   activeStopEvent?: { isTagged?: boolean; causes?: { l2CategoryName?: string }[] },
 ): MachineNotTaggedState {
-  const lossEvents = events.filter((e) => e.type !== "run");
+  // NSL (negative speed loss) is classifiable in the Operator tab but is not a loss.
+  const lossEvents = events.filter((e) => e.type !== "run" && e.type !== "negative_speed_loss");
 
   let notTaggedCount = 0;
   let taggedCount = 0;

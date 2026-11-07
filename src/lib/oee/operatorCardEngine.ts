@@ -9,6 +9,7 @@ import { getShiftTimeline, getMachineProfile } from "./machineEvents";
 import { getBottleneck, getSkuStandardRunRate, getMachineMaxRunRate } from "./metrics-engine";
 import { LINE_TOPOLOGY } from "./config";
 import {
+  classifyWindow,
   computeMachineOee,
   type WindowData,
   type WindowStatus,
@@ -56,6 +57,8 @@ export function computeOperatorCardMetrics(
       else if (w.type === "downtime") status = "D";
       else if (w.type === "minor_stop") status = "MS";
       else if (w.type === "speed_loss") status = "SL";
+      else if (w.type === "run" && w.eventId && classifyWindow(w.output, w.targetOutput) === "NSL")
+        status = "NSL";
       else status = "EF";
 
       let positiveSpeedLossSec: number | undefined;

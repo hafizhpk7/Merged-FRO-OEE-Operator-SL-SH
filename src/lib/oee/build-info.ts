@@ -1,4 +1,4 @@
-export const BUILD_ID = "r37 · 07 Nov 2026 19:55 WIB";
+export const BUILD_ID = "r39 · 08 Nov 2026 WIB · CR2";
 
 export const FEATURES = {
   routeTreeManualSync: true,
@@ -70,6 +70,15 @@ export const FEATURES = {
   oeeCardRealWindows: true,
   slshChartsFromEngine: true,
   lineDataSourceChip: true,
+  operatorRejectMinuteCorrection: true,
+  operatorReasonTimelineTooltip: true,
+  operatorClassifyCauseFlow: true,
+  operatorOverviewPopup: true,
+  cr2GroupingTagging: true,
+  cr2NegativeSpeedLossType: true,
+  cr2AtomicGroupSave: true,
+  cr2PlannedDowntimeConfirm: true,
+  cr2GroupSelfTest: true,
 };
 
 if (typeof window !== "undefined") {

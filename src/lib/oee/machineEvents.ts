@@ -30,10 +30,17 @@ import { formatTimeWib, getShiftInfo, SHIFT_SECONDS, type ShiftInfo } from "./sh
 import type { PeriodKey } from "./period";
 import { computeMachineOee, type WindowData, classifyWindow } from "./windowEngine";
 import { rejectStore } from "./rejectStore";
+import { reasonTagStore } from "./reasonTagStore";
 import { getLineLossFactor } from "./calibration";
 import { getLine } from "./data";
 
-export type EventType = "run" | "speed_loss" | "minor_stop" | "downtime" | "planned";
+export type EventType =
+  | "run"
+  | "speed_loss"
+  | "negative_speed_loss"
+  | "minor_stop"
+  | "downtime"
+  | "planned";
 
 export interface LossCause {
   id: string;
@@ -72,6 +79,10 @@ export interface MachineEvent {
   note?: string;
   causeMachineCode?: string;
   isTagged?: boolean;
+  /** Seconds of this event already covered by committed causes (operator or PLC). */
+  classifiedSec?: number;
+  /** Downtime only: spans (seconds from shift start) the operator tagged Planned Downtime; the windows there count as PD. */
+  plannedRanges?: { startSec: number; endSec: number }[];
   l0Component?: LossComponent;
   l1Parent?: LossParent;
   l2CategoryName?: string;
@@ -345,6 +356,137 @@ const SAMPLE_PRECLASSIFIED_REASONS = [
   },
 ];
 
+/** Key used by reasonTagStore for the causes an operator committed against one event. */
+export function operatorCauseKey(shiftKey: string, machineCode: string, eventId: string): string {
+  return `${shiftKey}:${machineCode}:${eventId}`;
+}
+
+/**
+ * Overlays causes the operator tagged (Reason page) onto a generated loss event.
+ * PLC-mapped events stay read-only and untouched. An event counts as tagged only when
+ * the committed causes cover its whole duration (one 30 s window of tolerance).
+ */
+function applyOperatorCauses(
+  event: MachineEvent,
+  shiftKey: string,
+  machineCode: string,
+): MachineEvent {
+  if (event.type === "run" || event.type === "planned") return event;
+  if (event.source === "PLC" && event.isTagged) return event;
+  const saved = reasonTagStore.getCauses(operatorCauseKey(shiftKey, machineCode, event.id));
+  if (saved.length === 0) return { ...event, classifiedSec: 0 };
+
+  const causes: LossCause[] = saved.map((c) => ({
+    id: c.id,
+    durationSec: Math.max(0, c.endSec - c.startSec),
+    l0Component: componentOf(c.l1Parent as LossParent),
+    l1Parent: c.l1Parent as LossParent,
+    l2CategoryId: c.l2CategoryId,
+    l2CategoryName: c.l2CategoryName,
+    l3ReasonId: c.l3ReasonId,
+    l3ReasonName: c.l3ReasonName,
+    causeMachineCode: machineCode,
+    ...(c.description ? { note: c.description } : {}),
+    ...(c.groupId ? { groupId: c.groupId } : {}),
+    ...(c.mode === "group" ? { groupedBy: c.operatorName ?? "Operator" } : {}),
+  }));
+  const classifiedSec = causes.reduce((s, c) => s + c.durationSec, 0);
+  const first = causes[0];
+  // CR 2 §3.3: only Downtime tagged Planned Downtime turns into PD (leaves SPT).
+  const plannedRanges =
+    event.type === "downtime"
+      ? saved
+          .filter((c) => c.l1Parent === "Planned Downtime")
+          .map((c) => ({ startSec: c.startSec, endSec: c.endSec }))
+      : [];
+  return {
+    ...event,
+    causes,
+    classifiedSec,
+    ...(plannedRanges.length > 0 ? { plannedRanges } : {}),
+    isTagged: classifiedSec >= event.durationSec - WINDOW_SEC,
+    ...(first
+      ? {
+          l1Parent: first.l1Parent,
+          l0Component: first.l0Component,
+          l2CategoryName: first.l2CategoryName,
+          l3ReasonName: first.l3ReasonName,
+        }
+      : {}),
+  };
+}
+
+/**
+ * Adds Negative Speed Loss events (output above the NSL tolerance of the window engine) in the
+ * free gaps between generated events. Seeded separately so the existing event sequence is unchanged.
+ */
+export function planNslEvents(
+  spans: { startSec: number; endSec: number }[],
+  seed: string,
+): { startSec: number; endSec: number; durationSec: number; speedPct: number }[] {
+  const rngN = makeRng(`${seed}:nsl`);
+  const sorted = [...spans].sort((a, b) => a.startSec - b.startSec);
+  const out: { startSec: number; endSec: number; durationSec: number; speedPct: number }[] = [];
+  for (let i = 0; i < sorted.length && out.length < 3; i++) {
+    const prevEnd = sorted[i]?.endSec ?? 0;
+    const nextStart = sorted[i + 1]?.startSec ?? SHIFT_SECONDS;
+    const gap = nextStart - prevEnd;
+    if (gap < 900 || rngN() < 0.25) continue;
+    const startSec = Math.ceil((prevEnd + 150) / WINDOW_SEC) * WINDOW_SEC;
+    const durationSec = Math.min(900, Math.floor((gap - 300) / WINDOW_SEC) * WINDOW_SEC);
+    if (durationSec < 600) continue;
+    // must exceed TOLERANCE_PCT (120) to be a negative speed loss window
+    out.push({
+      startSec,
+      endSec: startSec + durationSec,
+      durationSec,
+      speedPct: 122 + Math.floor(rngN() * 9),
+    });
+  }
+  return out;
+}
+
+function injectNslEvents(
+  rawEvents: MachineEvent[],
+  seed: string,
+  ctx: { plantId: string; machineCode: string; windowStartMs: number; orders: ProductionOrder[] },
+): void {
+  let n = 0;
+  for (const plan of planNslEvents(rawEvents, seed)) {
+    const { startSec, endSec, durationSec } = plan;
+    n += 1;
+    const id = `${ctx.plantId}-${ctx.machineCode}-EV-NSL-${String(n).padStart(2, "0")}`;
+    const order = startSec >= 18000 ? ctx.orders[1] : ctx.orders[0];
+    rawEvents.push(
+      normalizeEventTimestamps(
+        {
+          id,
+          machineCode: ctx.machineCode,
+          startSec,
+          endSec,
+          durationSec,
+          startAt: ctx.windowStartMs + startSec * 1000,
+          endAt: ctx.windowStartMs + endSec * 1000,
+          type: "negative_speed_loss",
+          speedPct: plan.speedPct,
+          orderId: order?.id || "",
+          sku: order?.sku || "",
+          productName: order?.productName || "",
+          source: "Non-PLC",
+          isTagged: false,
+          l0Component: "Performance",
+          l1Parent: "Speed Loss",
+          l2CategoryName: NOT_TAGGED_LABEL,
+          l3ReasonName: NOT_TAGGED_LABEL,
+          causes: [],
+        },
+        ctx.windowStartMs,
+      ),
+    );
+  }
+  rawEvents.sort((a, b) => a.startSec - b.startSec);
+}
+
 /**
  * Generates the unified timeline and events, deterministic per (shiftKey + machineCode + period)
  */
@@ -577,6 +719,9 @@ export function getShiftTimeline(
     );
   }
 
+  // 2b. Negative Speed Loss events (classifiable per CR 2) in the free gaps
+  injectNslEvents(rawEvents, seed, { plantId, machineCode, windowStartMs, orders });
+
   // 3. Filter active events for current timeline
   const activeEvents = rawEvents
     .filter((e) => e.startSec < revealSec || periodKey !== "this-shift")
@@ -598,7 +743,11 @@ export function getShiftTimeline(
         isOngoing,
       };
 
-      return normalizeEventTimestamps(baseEvent, windowStartMs);
+      return applyOperatorCauses(
+        normalizeEventTimestamps(baseEvent, windowStartMs),
+        shiftKey,
+        machineCode,
+      );
     });
 
   // 4. Generate 30s Timeline Windows (0..960)
@@ -650,7 +799,21 @@ export function getShiftTimeline(
       type = activeEv.type;
       needsReason = type !== "run" && !activeEv.isTagged;
 
-      if (type === "planned") {
+      // CR 2 §3.3: a Downtime window tagged Planned Downtime becomes PD (leaves SPT).
+      if (
+        type === "downtime" &&
+        activeEv.plannedRanges?.some((r) => wMid >= r.startSec && wMid < r.endSec)
+      ) {
+        type = "planned";
+      }
+
+      if (type === "negative_speed_loss") {
+        // Running faster than standard: the window itself stays a run window with elevated output
+        const pct = activeEv.speedPct ?? 125;
+        speedPpm = Math.round((profile.idealRatePpm * pct) / 100);
+        unitsInWindow = Math.round((targetUnitsInWindow * pct) / 100);
+        type = "run";
+      } else if (type === "planned") {
         speedPpm = 0;
         unitsInWindow = 0;
         plannedSec += WINDOW_SEC;
@@ -732,7 +895,11 @@ export function getShiftTimeline(
               ? "MS"
               : w.type === "speed_loss"
                 ? "SL"
-                : "EF",
+                : w.type === "run" &&
+                    w.targetOutput > 0 &&
+                    classifyWindow(w.output, w.targetOutput) === "NSL"
+                  ? "NSL"
+                  : "EF",
       ...(w.type === "speed_loss" && w.targetOutput > 0
         ? {
             positiveSpeedLossSec: Math.max(
@@ -761,7 +928,10 @@ export function getShiftTimeline(
       ? Math.round((metrics.scheduledTimeMin * 60 - totalStopSec) / stopsThisShift / 60)
       : null;
 
-  const notTaggedEvents = activeEvents.filter((e) => e.type !== "run" && !e.isTagged);
+  // NSL is classifiable (CR 2) but is not a loss, so it never counts as unclassified loss time.
+  const notTaggedEvents = activeEvents.filter(
+    (e) => e.type !== "run" && e.type !== "negative_speed_loss" && !e.isTagged,
+  );
   const notTaggedCount = notTaggedEvents.length;
   const unclassifiedCount = notTaggedCount;
   const unclassifiedSec = notTaggedEvents.reduce((sum, e) => sum + e.durationSec, 0);

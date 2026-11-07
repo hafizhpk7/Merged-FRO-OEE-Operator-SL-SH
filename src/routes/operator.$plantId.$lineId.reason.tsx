@@ -36,12 +36,13 @@ function OperatorReasonPage() {
 
   // Modals state
   const [classifyModalOpen, setClassifyModalOpen] = useState(false);
-  const [selectedEventForClassify, setSelectedEventForClassify] = useState<MachineEvent | null>(
-    null,
-  );
+  // 1 event = single mode, 2+ events = group mode (CR 2). Session bumps on every open so the
+  // modal captures fresh window versions.
+  const [classifyEvents, setClassifyEvents] = useState<MachineEvent[]>([]);
+  const [classifySession, setClassifySession] = useState(0);
 
   const [pendingListOpen, setPendingListOpen] = useState(false);
-  const [pendingTypeFilter, setPendingTypeFilter] = useState("all");
+  const [pendingTypeFilter, setPendingTypeFilter] = useState("downtime");
 
   const [blockerModalOpen, setBlockerModalOpen] = useState(false);
   const [pendingFinishCallback, setPendingFinishCallback] = useState<(() => void) | null>(null);
@@ -59,14 +60,16 @@ function OperatorReasonPage() {
     return Math.round(unclassifiedEvents.reduce((sum, e) => sum + e.durationSec, 0) / 60);
   }, [unclassifiedEvents]);
 
-  // Open Classify Modal for a specific event
-  const handleOpenClassify = (event: MachineEvent) => {
-    setSelectedEventForClassify(event);
+  // Open the Classify modal for one window (single) or a selection (group)
+  const handleOpenClassify = (selected: MachineEvent[]) => {
+    if (selected.length === 0) return;
+    setClassifyEvents(selected);
+    setClassifySession((n) => n + 1);
     setClassifyModalOpen(true);
   };
 
-  // Open Pending List
-  const handleOpenPendingList = (filter = "all") => {
+  // Open the per-type Overview
+  const handleOpenPendingList = (filter = "downtime") => {
     setPendingTypeFilter(filter);
     setPendingListOpen(true);
   };
@@ -105,24 +108,24 @@ function OperatorReasonPage() {
         <ProductionTimelineCard
           timeline={timeline}
           onOpenPendingList={handleOpenPendingList}
-          onSelectEventToClassify={handleOpenClassify}
+          onSelectEventToClassify={(ev) => handleOpenClassify([ev])}
         />
 
-        {/* Classify Modal */}
+        {/* Classify Modal (single / group) */}
         <ClassifyModal
-          key={selectedEventForClassify?.id ?? "none"}
-          event={selectedEventForClassify}
+          key={classifySession}
+          events={classifyEvents}
           open={classifyModalOpen}
           onOpenChange={setClassifyModalOpen}
         />
 
-        {/* Pending List Panel */}
+        {/* Overview per type (Uncommented / Committed) */}
         <PendingListModal
           open={pendingListOpen}
           onOpenChange={setPendingListOpen}
           events={timeline.events}
           initialFilter={pendingTypeFilter}
-          onSelectEventToClassify={handleOpenClassify}
+          onClassify={handleOpenClassify}
         />
 
         {/* Shift Closing Blocker Modal */}
@@ -130,7 +133,7 @@ function OperatorReasonPage() {
           open={blockerModalOpen}
           onOpenChange={setBlockerModalOpen}
           unclassifiedMin={unclassifiedMin}
-          onClassifyNow={() => handleOpenPendingList()}
+          onClassifyNow={() => handleOpenPendingList("downtime")}
           onFinishAnyway={() => {
             if (pendingFinishCallback) {
               pendingFinishCallback();

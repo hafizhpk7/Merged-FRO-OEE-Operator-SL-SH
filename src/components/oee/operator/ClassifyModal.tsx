@@ -1,487 +1,598 @@
-import { useState, useEffect, useMemo } from "react";
+import { useMemo, useState } from "react";
+import { Info, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Search, CheckCircle2, AlertTriangle, Info, Trash2, Plus, X, Edit2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { PARENTS, type LossCategoryNode, type LossParent } from "@/lib/oee/lossTree";
 import {
-  PARENTS,
-  type LossParent,
-  type LossCategoryNode,
-  type LossReasonNode,
-} from "@/lib/oee/lossTree";
-import { REASON_L1_BY_TYPE } from "@/lib/oee/reasonConstants";
-import { reasonTagStore } from "@/lib/oee/reasonTagStore";
+  CLASSIFIABLE_LABEL,
+  CLASSIFY_ALLOW_PARTIAL_SAVE,
+  REASON_L1_BY_TYPE,
+  type ClassifiableType,
+} from "@/lib/oee/reasonConstants";
+import { reasonTagStore, useReasonTags, type TaggedCause } from "@/lib/oee/reasonTagStore";
 import {
   notifyClassificationChanged,
+  operatorCauseKey,
   type MachineEvent,
-  type LossCause,
 } from "@/lib/oee/machineEvents";
-import { getLineSiblingMachines } from "@/lib/oee/machineEvents";
+import { formatTimeWib, getShiftInfo } from "@/lib/oee/shiftClock";
+import {
+  canAddCause,
+  canSaveSingle as canSaveSingleDraft,
+  changeEnd as changeEndDraft,
+  coverage,
+  endOptions as endOptionsFor,
+  isCauseComplete,
+  removeCause as removeCauseDraft,
+  startOf as startOfDraft,
+  type DraftCause,
+} from "@/lib/oee/classifyDraft";
 
+const fmtMin = (sec: number) => `${Math.round((sec / 60) * 10) / 10} min`;
+
+const selectCls =
+  "h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground";
+const labelCls = "text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
+
+type CatOption = LossCategoryNode & { parent: LossParent };
+
+/**
+ * CR 2 classify popup. One window -> single mode (cause list with times); two or more windows
+ * of the same type -> group mode (one cause applied to the full duration of every window).
+ * Saves go through reasonTagStore (versioned, atomic for groups).
+ * Mount with a fresh `key` per open so the expected versions are captured at open time.
+ */
 export function ClassifyModal({
-  event,
+  events,
   open,
   onOpenChange,
 }: {
-  event: MachineEvent | null;
+  events: MachineEvent[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const eventType: "downtime" | "minor_stop" | "speed_loss" =
-    event?.type === "downtime"
-      ? "downtime"
-      : event?.type === "minor_stop"
-        ? "minor_stop"
-        : "speed_loss";
+  useReasonTags(); // re-render on committed changes
+  const first = events[0];
+  const isGroup = events.length >= 2;
 
-  const isPlcMapped = Boolean(event?.source === "PLC" && event?.plcAlarm);
-  const totalDurationMin = event ? Math.round(event.durationSec / 60) : 0;
+  const shift = getShiftInfo();
+  const eventType = ((first?.type ?? "downtime") as ClassifiableType) in REASON_L1_BY_TYPE
+    ? ((first?.type ?? "downtime") as ClassifiableType)
+    : "downtime";
+  const typeLabel = CLASSIFIABLE_LABEL[eventType];
 
-  // Available machines on current line
-  const lineMachines = useMemo(
-    () => (event ? getLineSiblingMachines(event.machineCode) : []),
-    [event],
+  const keys = useMemo(
+    () => events.map((e) => operatorCauseKey(shift.shiftKey, e.machineCode, e.id)),
+    [events, shift.shiftKey],
+  );
+  // Versions at the moment the modal opened: used for the conflict check on save (GR-10).
+  const [expected] = useState(() => reasonTagStore.getVersions(keys));
+
+  const groups = useMemo(
+    () =>
+      (REASON_L1_BY_TYPE[eventType] ?? [])
+        .map((l1) => PARENTS.find((p) => p.id === l1))
+        .filter((p): p is NonNullable<typeof p> => !!p),
+    [eventType],
+  );
+  const categories: CatOption[] = useMemo(
+    () => groups.flatMap((g) => g.categories.map((c) => ({ ...c, parent: g.id as LossParent }))),
+    [groups],
   );
 
-  // Available L1 options
-  const allowedL1s = useMemo(() => REASON_L1_BY_TYPE[eventType] || ["Breakdown"], [eventType]);
+  const isPlcMapped = !isGroup && Boolean(first?.source === "PLC" && first?.isTagged);
+  const totalSec = first ? first.durationSec : 0;
 
-  // State
-  const [selectedL1, setSelectedL1] = useState<LossParent>(allowedL1s[0] || "Breakdown");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedL2Id, setSelectedL2Id] = useState<string>("");
-  const [selectedL3Id, setSelectedL3Id] = useState<string>("");
-  const [selectedMachine, setSelectedMachine] = useState<string>(event?.machineCode || "");
-  const [notes, setNotes] = useState<string>(event?.note || "");
+  // ---- single mode state -------------------------------------------------------------
+  const existing: TaggedCause[] = !isGroup && first && !isPlcMapped ? reasonTagStore.getCauses(keys[0] ?? "") : [];
+  const [causes, setCauses] = useState<DraftCause[]>(() => {
+    if (isGroup || !first) return [];
+    if (existing.length > 0) {
+      return existing.map((c, i) => ({
+        key: `d${i}`,
+        categoryId: c.l2CategoryId,
+        reasonId: c.l3ReasonId,
+        end: c.endSec - first.startSec,
+        desc: c.description ?? "",
+      }));
+    }
+    return [{ key: "d0", categoryId: "", reasonId: "", end: first.durationSec, desc: "" }];
+  });
+  const [seq, setSeq] = useState(1);
 
-  // Causes List
-  const [causes, setCauses] = useState<LossCause[]>(event?.causes || []);
-  const [timeError, setTimeError] = useState<string>("");
+  // ---- group mode state --------------------------------------------------------------
+  const [gCategoryId, setGCategoryId] = useState("");
+  const [gReasonId, setGReasonId] = useState("");
+  const [gDesc, setGDesc] = useState("");
 
-  // Start & End time inputs (in minutes relative to event start, or hh:mm string)
-  const formatSecToTime = (startSec: number) => {
-    const hh = String(Math.floor(startSec / 3600)).padStart(2, "0");
-    const mm = String(Math.floor((startSec % 3600) / 60)).padStart(2, "0");
-    return `${hh}:${mm}`;
+  const [error, setError] = useState<{ message: string; windows: string[] } | null>(null);
+  const [confirmPd, setConfirmPd] = useState(false);
+
+  if (!first || !open) return null;
+
+  const abs = (sec: number, withSec = false) => formatTimeWib(shift.startSec + sec, withSec);
+  const windowLabel = (e: MachineEvent) => `${abs(e.startSec)} - ${abs(e.endSec)}`;
+  const catOf = (id: string) => categories.find((c) => c.id === id);
+
+  // ---- single mode helpers -----------------------------------------------------------
+  const startOf = (i: number) => startOfDraft(causes, i);
+  const isComplete = isCauseComplete;
+  const { coveredSec } = coverage(causes, totalSec);
+  const canSaveSingle = canSaveSingleDraft(causes, totalSec, CLASSIFY_ALLOW_PARTIAL_SAVE);
+  const endOptions = (i: number) => endOptionsFor(causes, i, totalSec);
+
+  const patchCause = (i: number, patch: Partial<DraftCause>) =>
+    setCauses((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+
+  // Changing an end time cuts all later causes (GR-05).
+  const changeEnd = (i: number, end: number) => setCauses((prev) => changeEndDraft(prev, i, end));
+
+  const addCause = () => {
+    setSeq((s) => s + 1);
+    setCauses((prev) => [
+      ...prev,
+      { key: `d${seq}`, categoryId: "", reasonId: "", end: totalSec, desc: "" },
+    ]);
   };
 
-  const startSec = event?.startSec ?? 0;
-  const endSec = event?.endSec ?? 0;
+  const removeCause = (i: number) => setCauses((prev) => removeCauseDraft(prev, i, totalSec));
 
-  // Compute next available start time for cause
-  const classifiedSec = causes.reduce((sum, c) => sum + c.durationSec, 0);
-  const nextStartSec = startSec + classifiedSec;
-  const defaultNextEndSec = endSec;
-
-  const [inputStartStr, setInputStartStr] = useState(formatSecToTime(nextStartSec));
-  const [inputEndStr, setInputEndStr] = useState(formatSecToTime(defaultNextEndSec));
-
-  // Reset inputs when event or open changes
-  useEffect(() => {
-    if (event) {
-      setSelectedL1(allowedL1s[0] || "Breakdown");
-      setSelectedMachine(event.machineCode);
-      setNotes(event.note || "");
-      setCauses(event.causes || []);
-      const currentTag = reasonTagStore.getTags(event.id);
-      if (currentTag) {
-        setNotes(currentTag.notes || "");
-      }
-    }
-  }, [event, open, allowedL1s]);
-
-  // Categories under selected L1
-  const activeL1Node = PARENTS.find((p) => p.id === selectedL1);
-  const categories: LossCategoryNode[] = activeL1Node ? activeL1Node.categories : [];
-
-  // Set default L2 & L3 when L1 changes
-  useEffect(() => {
-    if (categories.length > 0 && categories[0]) {
-      setSelectedL2Id(categories[0].id);
-      if (categories[0].reasons.length > 0 && categories[0].reasons[0]) {
-        setSelectedL3Id(categories[0].reasons[0].id);
-      }
-    }
-  }, [selectedL1, categories]);
-
-  // Reasons under selected L2
-  const activeL2Node = categories.find((c) => c.id === selectedL2Id);
-  const reasons: LossReasonNode[] = activeL2Node ? activeL2Node.reasons : [];
-
-  // Search filter across categories & reasons
-  const filteredCategories = useMemo(() => {
-    if (!searchQuery.trim()) return categories;
-    const q = searchQuery.toLowerCase();
-    return categories.filter(
-      (cat) =>
-        cat.name.toLowerCase().includes(q) ||
-        cat.reasons.some((r) => r.name.toLowerCase().includes(q)),
-    );
-  }, [categories, searchQuery]);
-
-  // Classified duration stats
-  const classifiedMin = Math.round(classifiedSec / 60);
-  const unclassifiedMin = Math.max(0, totalDurationMin - classifiedMin);
-
-  // Handle Add Cause
-  const handleAddCause = () => {
-    if (!event) return;
-    setTimeError("");
-    const catNode = categories.find((c) => c.id === selectedL2Id);
-    const reasonNode = catNode?.reasons.find((r) => r.id === selectedL3Id);
-
-    if (!catNode || !reasonNode) {
-      setTimeError("Please select both Category (L2) and Reason (L3)");
-      return;
-    }
-
-    if (unclassifiedMin <= 0) {
-      setTimeError("Event is already fully classified.");
-      return;
-    }
-
-    const causeDurationSec = Math.max(30, unclassifiedMin * 60);
-    const newCause: LossCause = {
-      id: `C-${event.id}-${causes.length + 1}`,
-      durationSec: causeDurationSec,
-      l0Component: activeL1Node?.component || "Availability",
-      l1Parent: selectedL1,
-      l2CategoryId: catNode.id,
-      l2CategoryName: catNode.name,
-      l3ReasonId: reasonNode.id,
-      l3ReasonName: reasonNode.name,
-      causeMachineCode: selectedMachine,
-      note: notes,
+  const toTagged = (c: DraftCause, i: number): TaggedCause | null => {
+    const cat = catOf(c.categoryId);
+    const reason = cat?.reasons.find((r) => r.id === c.reasonId);
+    if (!cat || !reason) return null;
+    return {
+      id: `OC-${keys[0]}-${i + 1}`,
+      startSec: first.startSec + startOf(i),
+      endSec: first.startSec + c.end,
+      l1Parent: cat.parent,
+      l2CategoryId: cat.id,
+      l2CategoryName: cat.name,
+      l3ReasonId: reason.id,
+      l3ReasonName: reason.name,
+      ...(c.desc.trim() ? { description: c.desc.trim() } : {}),
+      taggedAt: new Date().toISOString(),
     };
-
-    setCauses([...causes, newCause]);
   };
 
-  // Handle Remove Cause
-  const handleRemoveCause = (index: number) => {
-    setCauses(causes.filter((_, i) => i !== index));
-  };
-
-  // Handle Save Classification
-  const handleSave = () => {
-    if (causes.length === 0) {
-      toast.error("Please add at least one cause before saving.");
+  const saveSingle = () => {
+    if (!canSaveSingle) return;
+    const list = causes
+      .map((c, i) => (isComplete(c) ? toTagged(c, i) : null))
+      .filter((c): c is TaggedCause => !!c);
+    const res = reasonTagStore.saveSingle(keys[0] ?? "", list, expected[keys[0] ?? ""] ?? 0);
+    if (!res.ok) {
+      setError({ message: res.message, windows: [windowLabel(first)] });
       return;
     }
-
-    const firstCause = causes[0];
-    if (event && firstCause) {
-      reasonTagStore.addTags(event.id, {
-        l2Category: firstCause.l2CategoryName,
-        l3Reason: firstCause.l3ReasonName,
-        notes,
-      });
-    }
-
     notifyClassificationChanged();
-
-    const remaining = unclassifiedMin;
-    if (remaining > 0) {
-      toast.info(`Saved. ${remaining} min still unclassified`, {
-        icon: <Info className="size-4 text-amber-500" />,
-      });
-    } else {
-      toast.success("Classification saved successfully!", {
-        icon: <CheckCircle2 className="size-4 text-emerald-500" />,
-      });
-    }
-
+    toast.success("Klasifikasi disimpan.");
     onOpenChange(false);
   };
 
-  if (!event || !open) return null;
+  // ---- group mode --------------------------------------------------------------------
+  const gCat = catOf(gCategoryId);
+  const gReason = gCat?.reasons.find((r) => r.id === gReasonId);
+  const groupTotalSec = events.reduce((s, e) => s + e.durationSec, 0);
+  const canSaveGroup = !!gCat && !!gReason;
+  // OI-2.1: Planned Downtime on Downtime windows changes them to PD, so confirm first.
+  const needsPdConfirm = eventType === "downtime" && gCat?.parent === "Planned Downtime";
 
-  const titleType =
-    eventType === "downtime"
-      ? "Downtime"
-      : eventType === "minor_stop"
-        ? "Minor Stop"
-        : "Speed Loss";
+  const doSaveGroup = () => {
+    if (!gCat || !gReason) return;
+    const res = reasonTagStore.saveGroup(
+      events.map((e, i) => ({ id: keys[i] ?? "", startSec: e.startSec, endSec: e.endSec })),
+      {
+        l1Parent: gCat.parent,
+        l2CategoryId: gCat.id,
+        l2CategoryName: gCat.name,
+        l3ReasonId: gReason.id,
+        l3ReasonName: gReason.name,
+        ...(gDesc.trim() ? { description: gDesc.trim() } : {}),
+      },
+      expected,
+    );
+    setConfirmPd(false);
+    if (!res.ok) {
+      const bad = new Set(res.conflicts);
+      setError({
+        message: res.message,
+        windows: events.filter((_, i) => bad.has(keys[i] ?? "")).map(windowLabel),
+      });
+      return;
+    }
+    notifyClassificationChanged();
+    toast.success(`${events.length} ${typeLabel.name.toLowerCase()} berhasil diklasifikasi.`);
+    onOpenChange(false);
+  };
 
-  const typeBadgeClass =
-    eventType === "downtime"
-      ? "bg-red-500 text-white"
-      : eventType === "minor_stop"
-        ? "bg-purple-500 text-white"
-        : "bg-amber-500 text-white";
+  const onSaveGroupClick = () => (needsPdConfirm ? setConfirmPd(true) : doSaveGroup());
 
-  const isFullyClassified = unclassifiedMin === 0;
-  const statusBadge = isFullyClassified ? (
-    <span className="flex items-center gap-1 text-emerald-600 font-bold text-xs bg-emerald-100 px-2 py-0.5 rounded-md">
-      <CheckCircle2 className="size-3.5" /> Fully Classified
-    </span>
-  ) : (
-    <span className="flex items-center gap-1 text-amber-600 font-bold text-xs bg-amber-100 px-2 py-0.5 rounded-md">
-      <AlertTriangle className="size-3.5" /> Incomplete
-    </span>
-  );
+  const modeTag = isGroup ? `Grup: ${events.length} window` : "Satuan";
+  const codeBadge: Record<ClassifiableType, string> = {
+    downtime: "bg-red-500",
+    minor_stop: "bg-purple-600",
+    speed_loss: "bg-amber-500",
+    negative_speed_loss: "bg-emerald-600",
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-6">
-        <DialogHeader className="space-y-2 border-b border-border pb-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <DialogTitle className="text-xl font-bold">Edit {titleType}</DialogTitle>
-              <span
-                className={`rounded-md px-2.5 py-0.5 text-xs font-bold uppercase ${typeBadgeClass}`}
-              >
-                {titleType}
-              </span>
-            </div>
-            <div className="text-xs font-mono text-muted-foreground">
-              {formatSecToTime(event.startSec)} – {formatSecToTime(event.endSec)} (
-              {totalDurationMin} mins duration)
-            </div>
+      <DialogContent
+        data-testid="classify-modal"
+        data-mode={isGroup ? "group" : "single"}
+        className="max-h-[92vh] overflow-y-auto p-8 sm:max-w-3xl"
+      >
+        <DialogHeader className="text-left">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`flex h-6 min-w-6 items-center justify-center rounded px-1 text-[10px] font-bold text-white ${codeBadge[eventType]}`}
+            >
+              {typeLabel.code}
+            </span>
+            <DialogTitle className="text-xl font-semibold">
+              {isGroup
+                ? `Classify ${events.length} ${typeLabel.name}`
+                : `Classify ${typeLabel.name}`}
+            </DialogTitle>
+            <span
+              data-testid="mode-tag"
+              className="rounded bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-800 dark:bg-blue-950 dark:text-blue-200"
+            >
+              {modeTag}
+            </span>
           </div>
-
-          {/* PLC Read-Only Info Banner */}
-          {isPlcMapped && (
-            <div className="flex items-center gap-2 rounded-md border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/60 p-3 text-xs text-blue-800 dark:text-blue-200">
-              <Info className="size-4 shrink-0 text-blue-600" />
-              <span>
-                Auto-tagged by PLC alarm code: <strong>{event.plcAlarm}</strong> (Read-Only)
-              </span>
-            </div>
-          )}
         </DialogHeader>
 
-        <div className="grid grid-cols-1 gap-6 pt-2 lg:grid-cols-12">
-          {/* Left Column: Cascading Selection Controls */}
-          <div className="space-y-4 lg:col-span-7">
-            {/* Search Reason */}
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
-              <Input
-                placeholder="Search reason..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                disabled={isPlcMapped}
-                className="pl-9 text-xs"
+        {error && (
+          <div
+            role="alert"
+            data-testid="classify-error"
+            className="rounded-md border border-red-300 bg-red-50 p-3 text-xs text-red-800 dark:bg-red-950/40 dark:text-red-200"
+          >
+            <p className="font-semibold">{error.message}</p>
+            {error.windows.length > 0 && (
+              <ul className="mt-1 list-disc pl-4">
+                {error.windows.map((w) => (
+                  <li key={w}>Window bermasalah: {w}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* ============ GROUP MODE ============ */}
+        {isGroup && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Total {fmtMin(groupTotalSec)}. Satu cause diterapkan penuh ke seluruh durasi tiap
+              window.
+            </p>
+            <div className="space-y-1.5">
+              <p className={labelCls}>Window yang dipilih</p>
+              {events.map((e) => (
+                <div key={e.id} className="flex items-center gap-3 text-sm" data-testid="group-window">
+                  <span className="w-32 font-mono text-xs">{windowLabel(e)}</span>
+                  <span className="w-20 text-xs text-muted-foreground">{fmtMin(e.durationSec)}</span>
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-blue-600 transition-all"
+                      style={{ width: canSaveGroup ? "100%" : "0%" }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className={labelCls}>Category</label>
+                <select
+                  aria-label="Category"
+                  value={gCategoryId}
+                  onChange={(e) => {
+                    setGCategoryId(e.target.value);
+                    setGReasonId("");
+                  }}
+                  className={selectCls}
+                >
+                  <option value="">Pilih category</option>
+                  {groups.map((g) => (
+                    <optgroup key={g.id} label={g.id}>
+                      {g.categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className={labelCls}>Reason</label>
+                <select
+                  aria-label="Reason"
+                  value={gReasonId}
+                  disabled={!gCat}
+                  onChange={(e) => setGReasonId(e.target.value)}
+                  className={selectCls}
+                >
+                  <option value="">Pilih reason</option>
+                  {gCat?.reasons.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className={labelCls}>Description (opsional, berlaku untuk semua)</label>
+              <Textarea
+                aria-label="Description"
+                placeholder="Catatan untuk cause ini..."
+                value={gDesc}
+                onChange={(e) => setGDesc(e.target.value)}
+                className="h-20 text-sm"
               />
             </div>
 
-            {/* PARENT ISSUE (L1) */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                PARENT ISSUE (L1)
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {allowedL1s.map((l1) => (
-                  <button
-                    key={l1}
-                    disabled={isPlcMapped}
-                    onClick={() => setSelectedL1(l1)}
-                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                      selectedL1 === l1
-                        ? "bg-primary text-primary-foreground shadow-xs"
-                        : "border border-border bg-card text-foreground hover:bg-accent"
-                    }`}
-                  >
-                    {l1}
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-start gap-2 rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+              <Info className="mt-0.5 size-4 shrink-0" />
+              <span>
+                Waktu mulai dan selesai tidak diubah di mode grup. Untuk memecah satu window ke
+                beberapa cause, pakai Classify satuan.
+              </span>
             </div>
 
-            {/* CATEGORY (L2) Searchable Select */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                CATEGORY ISSUE (L2)
-              </label>
-              <select
-                disabled={isPlcMapped}
-                value={selectedL2Id}
-                onChange={(e) => setSelectedL2Id(e.target.value)}
-                className="w-full rounded-md border border-border bg-card px-3 py-2 text-xs font-medium text-foreground focus:outline-hidden focus:ring-1 focus:ring-primary"
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button
+                data-testid="save-group"
+                onClick={onSaveGroupClick}
+                disabled={!canSaveGroup}
+                className="bg-blue-600 px-6 text-white hover:bg-blue-700"
               >
-                {filteredCategories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
+                Save {events.length} classification
+              </Button>
             </div>
+          </div>
+        )}
 
-            {/* REASON (L3) List */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                REASON ISSUE (L3)
-              </label>
-              <div className="max-h-40 overflow-y-auto rounded-md border border-border bg-card p-1">
-                {reasons.length === 0 ? (
-                  <div className="p-3 text-center text-xs text-muted-foreground">
-                    No reasons available
-                  </div>
-                ) : (
-                  reasons.map((r) => (
-                    <button
-                      key={r.id}
-                      disabled={isPlcMapped}
-                      onClick={() => setSelectedL3Id(r.id)}
-                      className={`flex w-full items-center justify-between rounded-sm px-2.5 py-1.5 text-xs transition-colors ${
-                        selectedL3Id === r.id
-                          ? "bg-primary/10 font-semibold text-primary"
-                          : "text-foreground hover:bg-accent"
-                      }`}
-                    >
-                      <span>{r.name}</span>
-                      {selectedL3Id === r.id && <CheckCircle2 className="size-3.5 text-primary" />}
-                    </button>
-                  ))
-                )}
+        {/* ============ SINGLE MODE ============ */}
+        {!isGroup && (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className={labelCls}>Connect Time</p>
+                  <p className="mt-1 text-xs text-foreground">
+                    {windowLabel(first)} | {fmtMin(totalSec)} duration
+                  </p>
+                </div>
+                <p data-testid="progress" className="text-sm font-semibold text-foreground">
+                  {fmtMin(isPlcMapped ? totalSec : coveredSec)} / {fmtMin(totalSec)}
+                </p>
               </div>
-            </div>
-
-            {/* MACHINE Selection Chips */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                MACHINE
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {lineMachines.map((m) => (
-                  <button
-                    key={m.code}
-                    disabled={isPlcMapped}
-                    onClick={() => setSelectedMachine(m.code)}
-                    className={`rounded-md px-2.5 py-1 text-xs font-mono font-medium transition-colors ${
-                      selectedMachine === m.code
-                        ? "bg-foreground text-background"
-                        : "border border-border bg-card text-foreground hover:bg-accent"
-                    }`}
-                  >
-                    {m.code}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* TIME RANGE */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-semibold text-muted-foreground uppercase">
-                  START TIME
-                </label>
-                <Input value={inputStartStr} disabled className="mt-1 h-8 text-xs font-mono" />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-muted-foreground uppercase">
-                  END TIME
-                </label>
-                <Input
-                  value={inputEndStr}
-                  onChange={(e) => setInputEndStr(e.target.value)}
-                  disabled={isPlcMapped}
-                  className="mt-1 h-8 text-xs font-mono"
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-blue-600 transition-all"
+                  style={{
+                    width: `${Math.min(100, ((isPlcMapped ? totalSec : coveredSec) / Math.max(1, totalSec)) * 100)}%`,
+                  }}
                 />
               </div>
             </div>
 
-            {timeError && <p className="text-xs text-destructive">{timeError}</p>}
-
-            <Button
-              onClick={handleAddCause}
-              disabled={isPlcMapped || unclassifiedMin <= 0}
-              className="w-full h-8 text-xs font-medium"
-            >
-              <Plus className="size-3.5 mr-1" /> Add Cause
-            </Button>
-          </div>
-
-          {/* Right Column: Cause List & Status */}
-          <div className="space-y-4 lg:col-span-5">
-            <div className="flex items-center justify-between border-b border-border pb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-                CAUSE LIST
-              </span>
-              <span className="text-xs font-mono text-muted-foreground">
-                {classifiedMin} / {totalDurationMin} min
-              </span>
-            </div>
-
-            {/* Classification Status Bar */}
-            <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 p-2.5">
-              <span className="text-xs font-medium text-foreground">Classification Status</span>
-              {statusBadge}
-            </div>
-
-            {/* Cause Items */}
-            <div className="space-y-2 min-h-[120px] max-h-[220px] overflow-y-auto">
-              {causes.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-                  No causes added yet. Select Category & Reason and click "+ Add cause".
+            {isPlcMapped && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-200">
+                  <Info className="size-4 shrink-0" />
+                  <span>
+                    Auto-tagged by PLC alarm code{first.plcAlarm ? `: ${first.plcAlarm}` : ""}{" "}
+                    (Read-Only)
+                  </span>
                 </div>
-              ) : (
-                causes.map((c, idx) => (
-                  <div
-                    key={c.id || idx}
-                    className="flex items-start justify-between rounded-md border border-border bg-card p-3 shadow-2xs"
+                {first.causes.map((c, i) => (
+                  <div key={c.id ?? i} className="rounded-lg border border-border bg-card p-4">
+                    <p className="text-sm font-semibold">{c.l3ReasonName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {c.l2CategoryName} · {c.l1Parent}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!isPlcMapped && (
+              <>
+                <div className="flex items-center justify-between">
+                  <p className={labelCls}>Cause List</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="add-cause"
+                    disabled={!canAddCause(causes, totalSec)}
+                    onClick={addCause}
+                    className="h-9 text-xs font-medium"
                   >
-                    <div className="space-y-1">
-                      <p className="text-xs font-bold text-foreground">{c.l3ReasonName}</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {c.l2CategoryName} ({c.l1Parent})
-                      </p>
-                      <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
-                        <span>Machine: {c.causeMachineCode || event.machineCode}</span>
-                        <span>·</span>
-                        <span>{Math.round(c.durationSec / 60)} mins</span>
+                    <Plus className="mr-1 size-3.5" /> Add cause
+                  </Button>
+                </div>
+
+                {causes.map((c, i) => {
+                  const cat = catOf(c.categoryId);
+                  const ready = isComplete(c);
+                  return (
+                    <div
+                      key={c.key}
+                      data-testid="cause-card"
+                      className={`space-y-4 rounded-lg border p-4 ${
+                        ready ? "border-emerald-300" : "border-orange-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold">Cause #{i + 1}</span>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
+                            ready
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-orange-100 text-orange-700"
+                          }`}
+                        >
+                          {ready ? "Ready" : "Draft"}
+                        </span>
+                        {i > 0 && (
+                          <button
+                            type="button"
+                            aria-label={`Hapus cause ${i + 1}`}
+                            onClick={() => removeCause(i)}
+                            className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-destructive"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <label className={labelCls}>Category</label>
+                          <select
+                            aria-label={`Category ${i + 1}`}
+                            value={c.categoryId}
+                            onChange={(e) => patchCause(i, { categoryId: e.target.value, reasonId: "" })}
+                            className={selectCls}
+                          >
+                            <option value="">Pilih category</option>
+                            {groups.map((g) => (
+                              <optgroup key={g.id} label={g.id}>
+                                {g.categories.map((cc) => (
+                                  <option key={cc.id} value={cc.id}>
+                                    {cc.name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className={labelCls}>Reason</label>
+                          <select
+                            aria-label={`Reason ${i + 1}`}
+                            value={c.reasonId}
+                            disabled={!cat}
+                            onChange={(e) => patchCause(i, { reasonId: e.target.value })}
+                            className={selectCls}
+                          >
+                            <option value="">Pilih reason</option>
+                            {cat?.reasons.map((r) => (
+                              <option key={r.id} value={r.id}>
+                                {r.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className={labelCls}>Start Time</label>
+                          <input
+                            aria-label={`Start time ${i + 1}`}
+                            disabled
+                            value={abs(first.startSec + startOf(i), true)}
+                            className={selectCls}
+                          />
+                          <p className="text-[11px] text-muted-foreground">
+                            {i === 0 ? "Awal window." : "Locked, lanjut dari cause sebelumnya."}
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className={labelCls}>End Time</label>
+                          <select
+                            aria-label={`End time ${i + 1}`}
+                            value={c.end}
+                            onChange={(e) => changeEnd(i, Number(e.target.value))}
+                            className={selectCls}
+                          >
+                            {endOptions(i).map((t) => (
+                              <option key={t} value={t}>
+                                {abs(first.startSec + t, true)}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-[11px] text-muted-foreground">Harus setelah start.</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className={labelCls}>Description</label>
+                        <Textarea
+                          aria-label={`Description ${i + 1}`}
+                          placeholder="Catatan untuk cause ini..."
+                          value={c.desc}
+                          onChange={(e) => patchCause(i, { desc: e.target.value })}
+                          className="h-16 text-sm"
+                        />
                       </div>
                     </div>
-                    {!isPlcMapped && (
-                      <button
-                        onClick={() => handleRemoveCause(idx)}
-                        className="text-muted-foreground hover:text-destructive p-1 rounded hover:bg-accent"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
+                  );
+                })}
 
-            {/* NOTES */}
-            <div className="space-y-1.5 pt-2">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                NOTES
-              </label>
-              <Textarea
-                placeholder="Add investigation notes, root cause analysis, or operator comments..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                disabled={isPlcMapped}
-                className="h-20 text-xs"
-              />
-            </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    data-testid="save-single"
+                    onClick={saveSingle}
+                    disabled={!canSaveSingle}
+                    className="bg-blue-600 px-6 text-white hover:bg-blue-700"
+                  >
+                    Save
+                  </Button>
+                </div>
+                {!canSaveSingle && (
+                  <p className="text-right text-[11px] text-muted-foreground">
+                    Save aktif setelah seluruh durasi tercakup oleh cause yang lengkap.
+                  </p>
+                )}
+              </>
+            )}
           </div>
-        </div>
+        )}
 
-        <DialogFooter className="mt-4 flex gap-2 border-t border-border pt-4 sm:justify-end">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={isPlcMapped || causes.length === 0}
-            className="bg-primary text-primary-foreground font-medium text-xs px-6"
-          >
-            Save Classification
-          </Button>
-        </DialogFooter>
+        {/* OI-2.1: extra confirmation before windows become Planned Downtime */}
+        <AlertDialog open={confirmPd} onOpenChange={setConfirmPd}>
+          <AlertDialogContent data-testid="pd-confirm">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Jadikan Planned Downtime?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {events.length} window dengan total {fmtMin(groupTotalSec)} akan dijadikan PD
+                (Planned Downtime) dan keluar dari Scheduled Production Time (SPT = T - NA - US -
+                PD).
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Batal</AlertDialogCancel>
+              <AlertDialogAction onClick={doSaveGroup}>
+                Ya, jadikan PD ({events.length})
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

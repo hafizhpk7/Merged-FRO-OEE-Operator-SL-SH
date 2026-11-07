@@ -8,7 +8,13 @@
  * - Caches closed shifts permanently, current shift per 30s bucket
  */
 
-import { getShiftTimeline, getMachineProfile, type EventType } from "./machineEvents";
+import {
+  getShiftTimeline,
+  getMachineProfile,
+  planNslEvents,
+  type EventType,
+} from "./machineEvents";
+import { classifyWindow } from "./windowEngine";
 import { type ShiftInfo, type ShiftCode, SHIFT_SECONDS } from "./shiftClock";
 import { rejectStore } from "./rejectStore";
 import type { MachineTotals } from "./oeeTotals";
@@ -78,11 +84,23 @@ function computeClosedShiftTotalsFast(
     events.push(evItem);
   }
 
+  // Same Negative Speed Loss schedule as getShiftTimeline (CR 2), planned from the same gaps.
+  for (const plan of planNslEvents(events, seed)) {
+    events.push({
+      startSec: plan.startSec,
+      endSec: plan.endSec,
+      type: "negative_speed_loss",
+      speedPct: plan.speedPct,
+    });
+  }
+  events.sort((a, b) => a.startSec - b.startSec);
+
   const targetPerWindow = (profile.idealRatePpm * 30) / 60;
   let pdSec = 0;
   let dSec = 0;
   let msSec = 0;
   let positiveSlSec = 0;
+  let negativeSlSec = 0;
   let runningSec = 0;
   let units = 0;
   let evIdx = 0;
@@ -109,6 +127,13 @@ function computeClosedShiftTotalsFast(
         const u = Math.round((targetPerWindow * pct) / 100);
         units += u;
         positiveSlSec += ((targetPerWindow - u) * 30) / targetPerWindow;
+      } else if (ev.type === "negative_speed_loss") {
+        runningSec += 30;
+        const u = Math.round((targetPerWindow * (ev.speedPct ?? 125)) / 100);
+        units += u;
+        if (classifyWindow(u, targetPerWindow) === "NSL") {
+          negativeSlSec += ((u - targetPerWindow) * 30) / targetPerWindow;
+        }
       }
     } else {
       runningSec += 30;
@@ -139,7 +164,7 @@ function computeClosedShiftTotalsFast(
     dMin: dSec / 60,
     msMin: msSec / 60,
     slPosMin: positiveSlSec / 60,
-    slNegMin: 0,
+    slNegMin: negativeSlSec / 60,
     units,
     reject,
     rework,
@@ -294,6 +319,10 @@ export function getMachineShiftTotals(
     } else {
       runningSec += 30;
       units += w.output;
+      const target = w.targetOutput > 0 ? w.targetOutput : (profile.idealRatePpm * 30) / 60;
+      if (classifyWindow(w.output, target) === "NSL") {
+        negativeSlSec += ((w.output - target) * 30) / target;
+      }
     }
   }
 
