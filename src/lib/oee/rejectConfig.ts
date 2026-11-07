@@ -30,6 +30,15 @@ export const REJECT_TYPES: RejectTypeItem[] = [
   { id: "rework", name: "Rework", category: "Rework" },
 ];
 
+/** Mock operator master for the "Nama operator" picker (real list comes from Master Data). */
+export const MOCK_OPERATORS: string[] = [
+  "Ahmad Fauzi",
+  "Budi Santoso",
+  "Citra Dewi",
+  "Dedi Kurniawan",
+  "Eka Pratama",
+];
+
 export function getRejectSlots(plantId: string, lineId: string): RejectSlot[] {
   const line =
     getLine(plantId, "A", lineId) || getLine(plantId, "B", lineId) || getLine(plantId, "C", lineId);

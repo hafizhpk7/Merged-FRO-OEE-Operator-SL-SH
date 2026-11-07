@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { OperatorShell } from "@/components/oee/operator/OperatorShell";
 import { OperatorSelectors } from "@/components/oee/operator/OperatorSelectors";
 import { OperatorDashboardContent } from "@/components/oee/operator/OperatorDashboardContent";
-import { getMockShifts } from "@/lib/oee/shiftMaster";
+import { getShiftInfo } from "@/lib/oee/shiftClock";
 
 export const Route = createFileRoute("/operator/$plantId/$lineId/")({
   component: OperatorDashboardPage,
@@ -10,9 +10,8 @@ export const Route = createFileRoute("/operator/$plantId/$lineId/")({
 
 function OperatorDashboardPage() {
   const { plantId, lineId } = Route.useParams();
-  const shifts = getMockShifts();
-  const currentShift = shifts.find((s) => s.isCurrent) || shifts[0];
-  const shiftKey = currentShift?.id || "shift-3-current";
+  // Real shift key (same as the OEE engines and the Reject page) so reject totals agree.
+  const shiftKey = getShiftInfo().shiftKey;
 
   return (
     <OperatorShell plantId={plantId} lineId={lineId}>

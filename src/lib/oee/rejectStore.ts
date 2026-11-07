@@ -21,10 +21,35 @@ export type RejectLog = {
   shiftKey: string;
 };
 
+/**
+ * Operator correction of a reject bucket (Reject page, "Konfigurasi Detail").
+ * `delta` is applied on top of the actual (sensor) value at one minute of one hourly bucket;
+ * negative values reduce the actual.
+ */
+export type RejectCorrection = {
+  id: string;
+  plantId: string;
+  lineId: string;
+  machineCode: string;
+  rejectTypeId: string;
+  rejectTypeName: string;
+  category: "Reject" | "Rework";
+  shiftKey: string;
+  hourIdx: number; // 0..7 from shift start
+  minute: number; // 0..59
+  delta: number; // non-zero integer
+  operator: string;
+  createdAt: number;
+};
+
 type RejectStoreSchema = {
   userLogs: RejectLog[];
   removedLogIds: string[];
+  corrections: RejectCorrection[];
 };
+
+const EMPTY_STATE = (): RejectStoreSchema => ({ userLogs: [], removedLogIds: [], corrections: [] });
+let correctionSeq = 0;
 
 const STORAGE_KEY = "fro-oee-reject-logs-v1";
 
@@ -32,12 +57,18 @@ type StoreListener = () => void;
 const listeners = new Set<StoreListener>();
 
 function getStoredState(): RejectStoreSchema {
-  if (typeof window === "undefined") return { userLogs: [], removedLogIds: [] };
+  if (typeof window === "undefined") return EMPTY_STATE();
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : { userLogs: [], removedLogIds: [] };
+    if (!raw) return EMPTY_STATE();
+    const parsed = JSON.parse(raw) as Partial<RejectStoreSchema>;
+    return {
+      userLogs: parsed.userLogs ?? [],
+      removedLogIds: parsed.removedLogIds ?? [],
+      corrections: parsed.corrections ?? [],
+    };
   } catch {
-    return { userLogs: [], removedLogIds: [] };
+    return EMPTY_STATE();
   }
 }
 
@@ -123,7 +154,25 @@ export const rejectStore = {
   getAllLogs(plantId: string, lineId: string, shiftKey: string): RejectLog[] {
     const state = currentCache;
     const baseline = generateBaselineLogs(plantId, lineId, shiftKey);
-    const combined = [...baseline, ...state.userLogs];
+    const shiftStartSec = getShiftInfo().startSec;
+    const correctionLogs: RejectLog[] = state.corrections
+      .filter((c) => c.plantId === plantId && c.lineId === lineId && c.shiftKey === shiftKey)
+      .map((c) => ({
+        id: c.id,
+        plantId: c.plantId,
+        lineId: c.lineId,
+        machineCode: c.machineCode,
+        rejectTypeId: c.rejectTypeId,
+        rejectTypeName: c.rejectTypeName,
+        qty: c.delta,
+        source: "manual" as const,
+        at: shiftStartSec + c.hourIdx * 3600 + c.minute * 60,
+        note: `Koreksi ${c.operator}`,
+        createdAt: c.createdAt,
+        category: c.category,
+        shiftKey: c.shiftKey,
+      }));
+    const combined = [...baseline, ...state.userLogs, ...correctionLogs];
     return combined.filter((log) => !state.removedLogIds.includes(log.id));
   },
 
@@ -201,10 +250,82 @@ export const rejectStore = {
       }
     }
 
+    for (const c of state.corrections) {
+      if (
+        c.plantId === plantId &&
+        c.lineId === lineId &&
+        c.shiftKey === shiftKey &&
+        c.rejectTypeId === rejectTypeId &&
+        (!machineCode || c.machineCode === machineCode) &&
+        c.hourIdx >= 0 &&
+        c.hourIdx < 8
+      ) {
+        currentHours[c.hourIdx] += c.delta;
+      }
+    }
+
     return {
       actual: actualHours,
-      current: currentHours,
+      current: currentHours.map((v) => Math.max(0, v)),
     };
+  },
+
+  getCorrections(
+    plantId: string,
+    lineId: string,
+    shiftKey: string,
+    rejectTypeId: string,
+    machineCode: string,
+  ): RejectCorrection[] {
+    return currentCache.corrections
+      .filter(
+        (c) =>
+          c.plantId === plantId &&
+          c.lineId === lineId &&
+          c.shiftKey === shiftKey &&
+          c.rejectTypeId === rejectTypeId &&
+          c.machineCode === machineCode,
+      )
+      .sort((a, b) => a.hourIdx - b.hourIdx || a.minute - b.minute);
+  },
+
+  /**
+   * Commits the operator's edits for one reject slot: removes the corrections flagged for
+   * deletion and appends the new minute rows, all under one operator name.
+   */
+  applyCorrections(payload: {
+    plantId: string;
+    lineId: string;
+    shiftKey: string;
+    machineCode: string;
+    rejectTypeId: string;
+    rejectTypeName: string;
+    category: "Reject" | "Rework";
+    operator: string;
+    removeIds: string[];
+    add: { hourIdx: number; minute: number; delta: number }[];
+  }) {
+    const state = getStoredState();
+    state.corrections = state.corrections.filter((c) => !payload.removeIds.includes(c.id));
+    for (const row of payload.add) {
+      correctionSeq += 1;
+      state.corrections.push({
+        id: `corr-${payload.shiftKey}-${payload.rejectTypeId}-${payload.machineCode}-${row.hourIdx}-${row.minute}-${correctionSeq}`,
+        plantId: payload.plantId,
+        lineId: payload.lineId,
+        machineCode: payload.machineCode,
+        rejectTypeId: payload.rejectTypeId,
+        rejectTypeName: payload.rejectTypeName,
+        category: payload.category,
+        shiftKey: payload.shiftKey,
+        hourIdx: row.hourIdx,
+        minute: row.minute,
+        delta: row.delta,
+        operator: payload.operator,
+        createdAt: Date.now(),
+      });
+    }
+    saveStoredState(state);
   },
 
   getDailyTrend(plantId: string, lineId: string, rejectTypeIds: string[]) {

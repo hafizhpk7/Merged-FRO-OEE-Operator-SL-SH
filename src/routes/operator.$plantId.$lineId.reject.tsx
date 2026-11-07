@@ -3,7 +3,8 @@ import { useState } from "react";
 import { OperatorShell } from "@/components/oee/operator/OperatorShell";
 import { OperatorSelectors } from "@/components/oee/operator/OperatorSelectors";
 import { RejectPageContent } from "@/components/oee/operator/RejectPageContent";
-import { getMockShifts } from "@/lib/oee/shiftMaster";
+import { getShiftInfo } from "@/lib/oee/shiftClock";
+import { getLine } from "@/lib/oee/data";
 
 export const Route = createFileRoute("/operator/$plantId/$lineId/reject")({
   component: OperatorRejectPage,
@@ -11,10 +12,11 @@ export const Route = createFileRoute("/operator/$plantId/$lineId/reject")({
 
 function OperatorRejectPage() {
   const { plantId, lineId } = Route.useParams();
-  const [selectedMachine, setSelectedMachine] = useState("ALL");
-  const shifts = getMockShifts();
-  const currentShift = shifts.find((s) => s.isCurrent) || shifts[0];
-  const shiftKey = currentShift?.id || "shift-3-current";
+  const line =
+    getLine(plantId, "A", lineId) || getLine(plantId, "B", lineId) || getLine(plantId, "C", lineId);
+  const [selectedMachine, setSelectedMachine] = useState(line?.machines[0]?.id ?? "LCM07");
+  // Same key the OEE engines use, so reject corrections reach Quality/OEE.
+  const shiftKey = getShiftInfo().shiftKey;
 
   return (
     <OperatorShell plantId={plantId} lineId={lineId}>
@@ -25,7 +27,6 @@ function OperatorRejectPage() {
           showMachineSelect={true}
           selectedMachine={selectedMachine}
           onMachineChange={setSelectedMachine}
-          includeAllMachines={true}
         />
         <RejectPageContent
           plantId={plantId}

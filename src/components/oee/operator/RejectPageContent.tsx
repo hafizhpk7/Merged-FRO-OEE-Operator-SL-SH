@@ -1,13 +1,28 @@
-import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useMemo, useState } from "react";
+import { Settings, XCircle } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getRejectSlots, type RejectSlot } from "@/lib/oee/rejectConfig";
 import { rejectStore, useRejectStore } from "@/lib/oee/rejectStore";
-import { AddRejectModal } from "./AddRejectModal";
-import { RemoveRejectModal } from "./RemoveRejectModal";
-import { KonfigurasiDetailModal } from "./KonfigurasiDetailModal";
-import { Plus, Settings, Trash2, Calendar, BarChart2 } from "lucide-react";
+import { formatTimeWib, getShiftInfo } from "@/lib/oee/shiftClock";
 import { getLine } from "@/lib/oee/data";
+import { KonfigurasiDetailModal } from "./KonfigurasiDetailModal";
+
+type MachineRef = { id: string; code?: string; name?: string };
+
+/** Hourly buckets visible on the page: shift start .. current hour (all 8 for a closed shift). */
+function useBuckets(shiftKey: string) {
+  const shift = getShiftInfo();
+  const isCurrent = shiftKey === shift.shiftKey;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const currentIdx = isCurrent
+    ? Math.max(0, Math.min(7, Math.floor((nowSec - shift.startSec) / 3600)))
+    : 7;
+  const labels = Array.from({ length: currentIdx + 1 }, (_, h) =>
+    formatTimeWib(shift.startSec + h * 3600),
+  );
+  return { labels, currentIdx, isCurrent };
+}
 
 export function RejectPageContent({
   plantId,
@@ -17,277 +32,194 @@ export function RejectPageContent({
 }: {
   plantId: string;
   lineId: string;
-  selectedMachine: string; // "ALL" or machineCode
+  selectedMachine: string; // machine id/code
   shiftKey: string;
 }) {
   const line =
     getLine(plantId, "A", lineId) || getLine(plantId, "B", lineId) || getLine(plantId, "C", lineId);
-  const machines: { code: string; name: string }[] = (line?.machines as {
-    code: string;
-    name: string;
-  }[]) || [
-    { code: "LCM07", name: "Cartoning Machine" },
-    { code: "LBF01", name: "Filler" },
-  ];
+  const machines = (line?.machines as MachineRef[] | undefined) ?? [];
+  const machine = machines.find((m) => m.id === selectedMachine || m.code === selectedMachine);
+  const machineCode = machine?.code ?? machine?.id ?? selectedMachine;
 
-  const [slots, setSlots] = useState<RejectSlot[]>(() => getRejectSlots(plantId, lineId));
-  const [viewMode, setViewMode] = useState<"hourly" | "daily">("hourly");
+  const slots = useMemo<RejectSlot[]>(
+    () =>
+      getRejectSlots(plantId, lineId).filter(
+        (s) =>
+          s.status === "Assigned" &&
+          s.rejectTypeId &&
+          s.rejectTypeName &&
+          s.assignedMachine === machineCode,
+      ),
+    [plantId, lineId, machineCode],
+  );
 
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [removeModalSlot, setRemoveModalSlot] = useState<RejectSlot | null>(null);
-  const [configModalSlot, setConfigModalSlot] = useState<RejectSlot | null>(null);
+  // Subscribes this page to store changes (corrections re-render the charts).
+  useRejectStore(plantId, lineId, shiftKey);
+  const { labels, currentIdx } = useBuckets(shiftKey);
 
-  const { logs, totals } = useRejectStore(plantId, lineId, shiftKey);
-
-  const hoursLabels = [
-    "23:00",
-    "00:00",
-    "01:00",
-    "02:00",
-    "03:00",
-    "04:00",
-    "05:00",
-    "06:00",
-    "07:00",
-    "08:00",
-    "09:00",
-  ];
+  const [configSlot, setConfigSlot] = useState<RejectSlot | null>(null);
 
   return (
     <div className="space-y-4 pb-12">
-      {/* Legend & Action Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card p-4 shadow-xs">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="size-4 rounded bg-red-200 dark:bg-red-950 inline-block" />
-            <div>
-              <p className="text-xs font-bold text-foreground">Current</p>
-              <p className="text-[10px] text-muted-foreground">Nilai setelah koreksi diterapkan</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-6 border-b-2 border-dashed border-red-400 inline-block" />
-            <div>
-              <p className="text-xs font-bold text-foreground">Actual</p>
-              <p className="text-[10px] text-muted-foreground">Nilai sebelum koreksi diterapkan</p>
-            </div>
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-8 rounded-lg border border-border bg-card px-4 py-3 shadow-xs">
+        <div className="flex items-center gap-3">
+          <span className="h-5 w-12 rounded bg-red-200 dark:bg-red-950" />
+          <div>
+            <p className="text-xs font-bold text-foreground">Current</p>
+            <p className="text-[11px] text-muted-foreground">Nilai setelah koreksi diterapkan</p>
           </div>
         </div>
-
         <div className="flex items-center gap-3">
-          <div className="flex rounded-md border border-border p-0.5 bg-muted/40 text-xs">
-            <button
-              onClick={() => setViewMode("hourly")}
-              className={`rounded px-3 py-1 font-semibold transition-colors ${
-                viewMode === "hourly"
-                  ? "bg-card text-foreground shadow-xs"
-                  : "text-muted-foreground"
-              }`}
-            >
-              Shift Hourly
-            </button>
-            <button
-              onClick={() => setViewMode("daily")}
-              className={`rounded px-3 py-1 font-semibold transition-colors ${
-                viewMode === "daily" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground"
-              }`}
-            >
-              7-Day Trend
-            </button>
+          <span className="w-12 border-b-2 border-dashed border-red-400" />
+          <div>
+            <p className="text-xs font-bold text-foreground">Actual</p>
+            <p className="text-[11px] text-muted-foreground">Nilai sebelum koreksi diterapkan</p>
           </div>
-
-          <Button
-            onClick={() => setIsAddOpen(true)}
-            className="bg-primary text-primary-foreground text-xs font-semibold px-4 h-8"
-          >
-            <Plus className="size-3.5 mr-1" /> Tambah Reject / Rework
-          </Button>
         </div>
       </div>
 
-      {/* Slots Grid */}
+      {slots.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border bg-card p-10 text-center text-xs text-muted-foreground">
+          Belum ada slot reject yang di-assign ke mesin {machineCode}.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {slots
-          .filter((s) => s.status === "Assigned" && s.rejectTypeId && s.rejectTypeName)
-          .filter((s) => selectedMachine === "ALL" || s.assignedMachine === selectedMachine)
-          .map((slot) => {
-            const slotLogs = logs.filter(
-              (l) => l.rejectTypeId === slot.rejectTypeId && l.machineCode === slot.assignedMachine,
-            );
-            const slotTotal = slotLogs.reduce((acc, l) => acc + l.qty, 0);
-            const hourlySeries = rejectStore.getHourlySeries(
-              plantId,
-              lineId,
-              shiftKey,
-              slot.rejectTypeId!,
-              slot.assignedMachine || undefined,
-            );
-            const dailyTrend = rejectStore.getDailyTrend(plantId, lineId, [slot.rejectTypeId!]);
+        {slots.map((slot) => {
+          const series = rejectStore.getHourlySeries(
+            plantId,
+            lineId,
+            shiftKey,
+            slot.rejectTypeId!,
+            machineCode,
+          );
+          const current = series.current.slice(0, currentIdx + 1);
+          const actual = series.actual.slice(0, currentIdx + 1);
+          const total = current.reduce((a, b) => a + b, 0);
 
-            return (
-              <Card key={slot.slotId} className="border border-border bg-card shadow-xs">
-                <div className="flex items-center justify-between border-b border-border px-4 py-3 bg-muted/20">
-                  <div className="flex items-center gap-2">
-                    <span className="flex size-7 items-center justify-center rounded bg-red-500/10 text-red-600 font-bold">
-                      ✕
-                    </span>
-                    <div>
-                      <h4 className="text-xs font-bold text-foreground">
-                        {slot.rejectTypeName} ({slot.assignedMachine})
-                      </h4>
-                      <p className="text-[11px] font-mono font-bold text-red-600">
-                        {slotTotal} pcs reject
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRemoveModalSlot(slot)}
-                      className="h-7 text-[11px] px-2 text-red-600 hover:text-red-700"
-                    >
-                      <Trash2 className="size-3 mr-1" /> Hapus
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setConfigModalSlot(slot)}
-                      className="h-7 text-[11px] px-2"
-                    >
-                      <Settings className="size-3 mr-1" /> Konfigurasi Detail
-                    </Button>
+          return (
+            <Card key={slot.slotId} className="border border-border bg-card p-4 shadow-xs">
+              <div className="flex items-start justify-between">
+                <div className="flex items-start gap-2">
+                  <XCircle className="mt-0.5 size-5 fill-red-600 text-white" />
+                  <div>
+                    <h4 className="text-sm font-semibold text-foreground">{slot.rejectTypeName}</h4>
+                    <p className="text-red-700">
+                      <span className="text-xl font-bold">{total}</span>{" "}
+                      <span className="text-[11px] font-medium text-muted-foreground">
+                        pcs reject
+                      </span>
+                    </p>
                   </div>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfigSlot(slot)}
+                  className="h-8 border-red-200 text-[11px] font-semibold text-red-700 hover:bg-red-50 hover:text-red-800"
+                >
+                  <Settings className="mr-1 size-3" /> Konfigurasi Detail
+                </Button>
+              </div>
 
-                <CardContent className="p-4">
-                  {viewMode === "hourly" ? (
-                    <div className="space-y-3">
-                      <div className="flex h-36 items-end gap-2 pt-4 pb-2 px-2 border-b border-border/60">
-                        {hourlySeries.current.map((val, idx) => {
-                          const maxVal = Math.max(...hourlySeries.current, 10);
-                          const heightPct = Math.min(100, Math.max(10, (val / maxVal) * 100));
-                          const actualVal = hourlySeries.actual[idx] || 0;
-
-                          return (
-                            <div
-                              key={idx}
-                              className="flex-1 flex flex-col items-center gap-1 h-full justify-end group relative"
-                            >
-                              {/* Tooltip on hover */}
-                              <div className="absolute -top-8 hidden group-hover:flex flex-col items-center bg-popover text-popover-foreground text-[10px] px-2 py-1 rounded shadow-md z-10 whitespace-nowrap border border-border">
-                                <span className="font-semibold">{hoursLabels[idx]}</span>
-                                <span>Current: {val} pcs</span>
-                                <span>Actual: {actualVal} pcs</span>
-                              </div>
-                              <span className="text-[10px] font-mono text-muted-foreground">
-                                {val}
-                              </span>
-                              <div
-                                className={`w-full rounded-t transition-all ${
-                                  idx === hourlySeries.current.length - 1
-                                    ? "bg-red-600"
-                                    : "bg-red-300 dark:bg-red-900"
-                                }`}
-                                style={{ height: `${heightPct}%` }}
-                              />
-                              <span className="text-[10px] font-mono text-muted-foreground">
-                                {hoursLabels[idx]}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
-                        <span>Slot ID: {slot.slotId}</span>
-                        <span className="font-medium text-foreground">
-                          Sensor + Manual + QA Synchronized
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="flex h-36 items-end gap-3 pt-4 pb-2 px-2 border-b border-border/60">
-                        {dailyTrend.map((d, idx) => {
-                          const maxVal = Math.max(...dailyTrend.map((x) => x.total), 20);
-                          const heightPct = Math.min(100, Math.max(15, (d.total / maxVal) * 100));
-
-                          return (
-                            <div
-                              key={idx}
-                              className="flex-1 flex flex-col items-center gap-1 h-full justify-end group relative"
-                            >
-                              <div className="absolute -top-8 hidden group-hover:flex flex-col items-center bg-popover text-popover-foreground text-[10px] px-2 py-1 rounded shadow-md z-10 whitespace-nowrap border border-border">
-                                <span>{d.dateLabel}</span>
-                                <span className="font-semibold">{d.total} pcs</span>
-                              </div>
-                              <span className="text-[10px] font-mono text-muted-foreground">
-                                {d.total}
-                              </span>
-                              <div
-                                className="w-full rounded-t bg-primary/70 hover:bg-primary transition-all"
-                                style={{ height: `${heightPct}%` }}
-                              />
-                              <span className="text-[9px] text-muted-foreground truncate w-full text-center">
-                                {d.dateLabel}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="size-3" /> 7-Day Historical Reject Trend
-                        </span>
-                        <span className="font-semibold text-foreground">
-                          Total: {dailyTrend.reduce((a, b) => a + b.total, 0)} pcs
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
+              <RejectBucketChart labels={labels} current={current} actual={actual} />
+            </Card>
+          );
+        })}
       </div>
 
-      {/* Modals */}
-      <AddRejectModal
-        open={isAddOpen}
-        onOpenChange={setIsAddOpen}
+      <KonfigurasiDetailModal
+        open={!!configSlot}
+        onOpenChange={(op) => !op && setConfigSlot(null)}
+        slot={configSlot}
         plantId={plantId}
         lineId={lineId}
-        defaultMachine={selectedMachine === "ALL" ? machines[0]?.code || "LCM07" : selectedMachine}
-        defaultRejectTypeId="reject-seal"
-        machines={machines}
         shiftKey={shiftKey}
+        machineCode={machineCode}
       />
+    </div>
+  );
+}
 
-      <RemoveRejectModal
-        open={!!removeModalSlot}
-        onOpenChange={(op) => !op && setRemoveModalSlot(null)}
-        logs={
-          removeModalSlot
-            ? logs.filter(
-                (l) =>
-                  l.rejectTypeId === removeModalSlot.rejectTypeId &&
-                  l.machineCode === removeModalSlot.assignedMachine,
-              )
-            : []
-        }
-        rejectTypeName={removeModalSlot?.rejectTypeName || ""}
-      />
+/** Bars = current (after correction); dashed line + dots = actual (before correction). */
+function RejectBucketChart({
+  labels,
+  current,
+  actual,
+}: {
+  labels: string[];
+  current: number[];
+  actual: number[];
+}) {
+  const n = labels.length;
+  const maxVal = Math.max(1, ...current, ...actual);
+  const CHART_H = 150;
+  const yOf = (v: number) => 100 - (v / maxVal) * 100; // percent from top
 
-      <KonfigurasiDetailModal
-        open={!!configModalSlot}
-        onOpenChange={(op) => !op && setConfigModalSlot(null)}
-        slot={configModalSlot}
-        machines={machines}
-        onSaveConfig={(updated) => {
-          setSlots((prev) => prev.map((s) => (s.slotId === updated.slotId ? updated : s)));
-        }}
-      />
+  const points = actual.map((v, i) => `${((i + 0.5) / n) * 100},${yOf(v)}`).join(" ");
+
+  return (
+    <div className="mt-3">
+      <div className="relative" style={{ height: CHART_H + 20 }}>
+        <div className="absolute inset-x-0 top-5 bottom-0 border-b border-border/60">
+          <div className="absolute inset-0 flex items-end">
+            {current.map((v, i) => (
+              <div key={i} className="flex h-full flex-1 items-end justify-center px-[3px]">
+                <div
+                  className="w-full rounded-t-sm bg-red-200 dark:bg-red-900/60"
+                  style={{ height: `${(v / maxVal) * 100}%`, minHeight: v > 0 ? 2 : 0 }}
+                />
+              </div>
+            ))}
+          </div>
+          <svg
+            className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+          >
+            <polyline
+              points={points}
+              fill="none"
+              stroke="#f87171"
+              strokeWidth={1}
+              strokeDasharray="3 3"
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+          {actual.map((v, i) => (
+            <span
+              key={i}
+              className="pointer-events-none absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-red-400 bg-red-300"
+              style={{ left: `${((i + 0.5) / n) * 100}%`, top: `${yOf(v)}%` }}
+            />
+          ))}
+          {current.map((v, i) => (
+            <span
+              key={i}
+              className="absolute -translate-x-1/2 text-[11px] font-bold text-foreground"
+              style={{
+                left: `${((i + 0.5) / n) * 100}%`,
+                bottom: `calc(${(Math.max(v, actual[i] ?? 0) / maxVal) * 100}% + 6px)`,
+              }}
+            >
+              {v}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="flex">
+        {labels.map((l, i) => (
+          <span
+            key={l + i}
+            className={`flex-1 pt-1.5 text-center text-[11px] ${
+              i === n - 1 ? "font-semibold text-red-600" : "text-muted-foreground"
+            }`}
+          >
+            {l}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
