@@ -1,0 +1,6 @@
+{
+  "name": "OEE FRO Dashboard Prototype",
+  "description": "Clickable OEE dashboard prototype for Shift Leader and Section Head.",
+  "permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

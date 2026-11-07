@@ -1,0 +1,236 @@
+import * as THREE from "three";
+import {
+  applyLOD,
+  createStackLight,
+  makeSeededRng,
+  tagPart,
+  updateStatusVisuals,
+} from "./materials";
+import type { MachineStatus, ModelBuilderOptions, ModelInstance } from "./types";
+
+export function buildFilling(options: ModelBuilderOptions = {}): ModelInstance {
+  const lod = options.lod ?? 2;
+  const rng = makeSeededRng(options.seed ?? 101);
+  let currentStatus: MachineStatus = options.status ?? "running";
+
+  const group = new THREE.Group();
+  group.name = "FillingMachine";
+
+  const M = (c: number, o: Record<string, unknown> = {}) =>
+    new THREE.MeshStandardMaterial({
+      color: c,
+      roughness: 0.5,
+      metalness:
+        lod === 0
+          ? Math.min(0.3, (o.metalness as number) ?? 0.3)
+          : ((o.metalness as number) ?? 0.3),
+      ...o,
+    });
+
+  const add = (
+    g: THREE.BufferGeometry,
+    m: THREE.Material,
+    x: number,
+    y: number,
+    z: number,
+    p?: THREE.Object3D,
+    part: "body" | "guard" | "conveyor" | "product" | "floor" | "hmi" | "lamps" = "body",
+  ) => {
+    const o = new THREE.Mesh(g, m);
+    o.position.set(x, y, z);
+    tagPart(o, part);
+    (p || group).add(o);
+    return o;
+  };
+
+  const B = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
+  const C = (a: number, b: number, h: number, s = 32) => new THREE.CylinderGeometry(a, b, h, s);
+
+  // Floor circle
+  const flGeo = new THREE.CircleGeometry(6, 48);
+  const fl = add(flGeo, M(0x888882, { transparent: true, opacity: 0.25 }), 0, 0, 0, group, "floor");
+  fl.rotation.x = -Math.PI / 2;
+
+  // Conveyor & Legs
+  add(B(8, 0.08, 0.9), M(0x2b2e33, { roughness: 0.8 }), 0, 0.96, 0, group, "conveyor");
+  [-0.5, 0.5].forEach((z) => {
+    add(B(8, 0.14, 0.05), M(0xb9bec6), 0, 1.06, z, group, "conveyor");
+  });
+  [-3.6, -1.2, 1.2, 3.6].forEach((x) => {
+    [-0.4, 0.4].forEach((z) => {
+      add(B(0.07, 0.92, 0.07), M(0x8d939c), x, 0.46, z, group, "conveyor");
+    });
+  });
+
+  // Machine Cabinet & Top Frame
+  add(B(1.5, 2.4, 1.1), M(0x6b3fa0), 0, 1.2, -1.2, group, "body");
+  add(B(1.56, 0.05, 1.16), M(0xc9ced6), 0, 2.47, -1.2, group, "body");
+  add(B(1.0, 0.25, 0.75), M(0x6b3fa0), 0, 2.3, -0.3, group, "body");
+
+  // Product Tank
+  const steel = M(0xd5d9de, { metalness: 0.7, roughness: 0.3 });
+  [-0.3, 0.3].forEach((dx) => {
+    [-0.3, 0.3].forEach((dz) => {
+      add(B(0.06, 0.9, 0.06), M(0x8d939c), -1.4 + dx, 0.45, -1.2 + dz, group, "body");
+    });
+  });
+  add(C(0.45, 0.45, 1.1), steel, -1.4, 1.45, -1.2, group, "body");
+  add(C(0.1, 0.45, 0.25), steel, -1.4, 2.12, -1.2, group, "body");
+  add(C(0.1, 0.1, 0.08), M(0x555b64), -1.4, 2.28, -1.2, group, "body");
+
+  // Pipe & Liquid Blobs
+  const ps = new THREE.Vector3(-1.4, 2.28, -1.2);
+  const pe = new THREE.Vector3(-0.2, 2.3, -0.3);
+  const pipe = add(C(0.04, 0.04, ps.distanceTo(pe), 12), M(0xb9bec6), 0, 0, 0, group, "body");
+  pipe.position.copy(ps).add(pe).multiplyScalar(0.5);
+  pipe.lookAt(pe);
+  pipe.rotateX(Math.PI / 2);
+
+  const pm = M(0xf4a3c0, { emissive: 0xf4a3c0, emissiveIntensity: 0.35 });
+  const blobs: THREE.Mesh[] = [];
+  for (let k = 0; k < 6; k++) {
+    blobs.push(add(new THREE.SphereGeometry(0.05, 12, 12), pm, 0, 0, 0, group, "product"));
+  }
+
+  // Sensor
+  add(B(0.04, 0.25, 0.04), M(0x9aa0a8), -0.7, 1.12, 0.55, group, "body");
+  add(B(0.09, 0.09, 0.09), M(0x19c2d6, { emissive: 0x0a7d8a }), -0.7, 1.28, 0.55, group, "body");
+
+  // HMI
+  add(B(0.36, 0.26, 0.03), M(0x111418), 0.45, 1.3, -0.64, group, "hmi");
+  const scrMat = new THREE.MeshStandardMaterial({
+    color: 0x2ecc71,
+    emissive: 0x2ecc71,
+    emissiveIntensity: 0.6,
+  });
+  const scr = add(B(0.3, 0.2, 0.005), scrMat, 0.45, 1.3, -0.62, group, "hmi");
+
+  // Nozzle
+  const noz = new THREE.Group();
+  tagPart(noz, "body");
+  noz.position.set(0, 1.84, 0);
+  group.add(noz);
+  add(C(0.03, 0.03, 0.6), M(0x8d939c), 0, 0.3, 0, noz, "body");
+  add(C(0.045, 0.02, 0.08), M(0x333840), 0, 0.04, 0, noz, "body");
+  const stream = add(C(0.015, 0.015, 1), pm, 0, 0, 0, group, "product");
+  stream.visible = false;
+
+  // Stack light
+  const lamps = createStackLight(0.5, 0.08, 0.12);
+  lamps.group.position.set(0.6, 2.45, -1.2);
+  group.add(lamps.group);
+
+  // Bottles
+  const bm = M(0x9fd6d0, { transparent: lod >= 1, opacity: 0.4, roughness: 0.2 });
+  const lm = M(0xf4c6d7, { roughness: 0.3 });
+  const bottles: { g: THREE.Group; liq: THREE.Mesh; done: boolean }[] = [];
+  for (let i = 0; i < 10; i++) {
+    const bg = new THREE.Group();
+    tagPart(bg, "product");
+    add(C(0.15, 0.15, 0.5), bm, 0, 0.25, 0, bg, "product");
+    add(C(0.06, 0.15, 0.1), bm, 0, 0.55, 0, bg, "product");
+    add(C(0.06, 0.06, 0.08), bm, 0, 0.64, 0, bg, "product");
+    const liq = add(C(0.14, 0.14, 1), lm, 0, 0.04, 0, bg, "product");
+    liq.visible = false;
+    bg.position.set(-4 + i * 0.8, 1.0, 0);
+    group.add(bg);
+    bottles.push({ g: bg, liq, done: false });
+  }
+
+  applyLOD(group, lod);
+
+  let localT = rng() * 10;
+  let flow = 0;
+
+  const instance: ModelInstance = {
+    group,
+    setStatus: (s) => {
+      currentStatus = s;
+      updateStatusVisuals({ status: s, t: localT, lamps, hmiScreen: scr });
+    },
+    update: (dt, _globalT) => {
+      const timeScale = updateStatusVisuals({
+        status: currentStatus,
+        t: localT,
+        lamps,
+        hmiScreen: scr,
+      });
+      if (timeScale <= 0) return;
+
+      const effDt = dt * timeScale;
+      localT += effDt;
+
+      flow = (flow + effDt * 0.4) % 1;
+      let cur: { x: number; h: number } | null = null;
+
+      bottles.forEach((b) => {
+        let x = b.g.position.x + effDt * 0.9;
+        if (x > 4) {
+          x -= 8;
+          b.done = false;
+        }
+        b.g.position.x = x;
+        const lv = Math.max(0, Math.min(1, (x + 0.35) / 0.7));
+        const h = 0.42 * lv;
+        b.liq.visible = h > 0.01;
+        b.liq.scale.y = Math.max(h, 0.001);
+        b.liq.position.y = 0.04 + h / 2;
+        if (lv >= 1 && !b.done) {
+          b.done = true;
+        }
+        if (x > -0.35 && x < 0.35) {
+          cur = { x, h };
+        }
+      });
+
+      const ty = cur ? 1.62 : 1.84;
+      const tx = cur ? (cur as { x: number; h: number }).x : -0.35;
+      noz.position.y += (ty - noz.position.y) * 0.25;
+      noz.position.x += (tx - noz.position.x) * 0.3;
+
+      if (cur && noz.position.y < 1.7) {
+        const top = 1.04 + (cur as { x: number; h: number }).h;
+        const len = noz.position.y - top;
+        stream.visible = len > 0;
+        stream.scale.y = Math.max(len, 0.001);
+        stream.position.set(noz.position.x, top + len / 2, 0);
+      } else {
+        stream.visible = false;
+      }
+
+      blobs.forEach((o, i) => {
+        const f = (flow + i / blobs.length) % 1;
+        o.position.set(
+          ps.x + (pe.x - ps.x) * f,
+          ps.y + (pe.y - ps.y) * f,
+          ps.z + (pe.z - ps.z) * f,
+        );
+      });
+    },
+    setLOD: (lvl) => {
+      applyLOD(group, lvl);
+    },
+    getBounds: () => {
+      const box = new THREE.Box3();
+      group.traverse((obj) => {
+        if (obj.userData.part === "body" && obj instanceof THREE.Mesh) {
+          box.expandByObject(obj);
+        }
+      });
+      if (box.isEmpty()) box.setFromObject(group);
+      return box;
+    },
+    dispose: () => {
+      group.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          obj.geometry.dispose();
+          if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
+          else obj.material.dispose();
+        }
+      });
+    },
+  };
+
+  instance.setStatus(currentStatus);
+  return instance;
+}
