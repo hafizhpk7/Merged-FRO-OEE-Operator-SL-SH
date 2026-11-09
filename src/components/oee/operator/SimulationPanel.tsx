@@ -139,6 +139,7 @@ function PanelBody({ plantId, lineId }: { plantId: string; lineId: string }) {
   const [outPct, setOutPct] = useState(s.outputPct);
   useEffect(() => setOutPct(s.outputPct), [s.outputPct]);
   const [outNotice, setOutNotice] = useState("");
+  const overridden = s.outputOverrides.some((o) => o.lineKey === `${plantId}:${lineId}` && o.shiftStartSec === shift.startSec);
   const ratioNow = r.target > 0 ? (r.actual / r.target) * 100 : null;
 
   // ---- SRR
@@ -209,24 +210,6 @@ function PanelBody({ plantId, lineId }: { plantId: string; lineId: string }) {
       {/* 2. Actual vs Target + readouts */}
       <fieldset className={box}>
         <legend className={h}>Output</legend>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            data-testid="sim-natural"
-            checked={s.outputNatural}
-            onChange={(e) => {
-              if (e.target.checked) {
-                clearActualVsTarget(plantId, lineId);
-                setOutNotice("");
-              } else {
-                const r = applyActualVsTarget(plantId, lineId, outPct, s.outputApplyMode);
-                simStore.setOutputUi({ natural: !r.ok });
-                setOutNotice(r.notice ?? "");
-              }
-            }}
-          />
-          <span>Natural (no override)</span>
-        </label>
         <label className="block space-y-1">
           <span className="flex justify-between text-[11px] text-muted-foreground">
             <span>Actual vs Target (%)</span>
@@ -239,7 +222,6 @@ function PanelBody({ plantId, lineId }: { plantId: string; lineId: string }) {
             step={1}
             data-testid="sim-output-slider"
             aria-label="Actual vs Target persen"
-            disabled={s.outputNatural}
             value={outPct}
             onChange={(e) => {
               const v = Number(e.target.value);
@@ -247,7 +229,7 @@ function PanelBody({ plantId, lineId }: { plantId: string; lineId: string }) {
               const r = applyActualVsTarget(plantId, lineId, v, s.outputApplyMode);
               setOutNotice(r.notice ?? "");
             }}
-            className="w-full accent-violet-600 disabled:opacity-40"
+            className="w-full accent-violet-600"
           />
         </label>
         <div className="flex flex-wrap items-center gap-3" role="radiogroup" aria-label="Mode terapkan">
@@ -262,20 +244,35 @@ function PanelBody({ plantId, lineId }: { plantId: string; lineId: string }) {
                 type="radio"
                 name="sim-apply"
                 data-testid={`sim-apply-${m}`}
-                disabled={s.outputNatural}
                 checked={s.outputApplyMode === m}
                 onChange={() => {
-                  const r = applyActualVsTarget(plantId, lineId, outPct, m);
-                  setOutNotice(r.notice ?? "");
+                  simStore.setOutputUi({ mode: m });
+                  if (overridden) {
+                    const r = applyActualVsTarget(plantId, lineId, outPct, m);
+                    setOutNotice(r.notice ?? "");
+                  }
                 }}
               />
               {label}
             </label>
           ))}
+          <Button
+            size="sm"
+            variant="outline"
+            className={btn}
+            data-testid="sim-output-reset"
+            disabled={!overridden}
+            onClick={() => {
+              clearActualVsTarget(plantId, lineId);
+              setOutNotice("");
+            }}
+          >
+            Reset ke natural
+          </Button>
         </div>
         <p className="text-[11px] text-muted-foreground" data-testid="sim-avt-now">
           Actual vs target now: <b className="text-foreground">{ratioNow === null ? "-" : `${ratioNow.toFixed(1)}%`}</b>
-          {s.outputNatural ? " (natural)" : ` (requested ${outPct}%)`}
+          {overridden ? ` (requested ${outPct}%)` : " (natural)"}
         </p>
         {outNotice && (
           <p className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800" data-testid="sim-output-notice">{outNotice}</p>

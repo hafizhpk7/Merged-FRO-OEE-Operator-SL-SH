@@ -53,6 +53,28 @@ export function windowOutput(lineKey: string, shiftStartSec: number, machine: st
   return natural;
 }
 
+/**
+ * Output of a Downtime / Minor Stop window when the override runs in "spread" mode (the line had no
+ * Effective window to scale). `nominal` is the machine output of a running window. null = unchanged.
+ */
+export function spreadOutput(lineKey: string, shiftStartSec: number, machine: string, idx: number, nominal: number): number | null {
+  if (suspended || simStore.get().outputOverrides.length === 0) return null;
+  const segs = segsOf(lineKey, shiftStartSec);
+  for (let i = segs.length - 1; i >= 0; i--) {
+    const s = segs[i] as OutputOverrideSeg;
+    if (idx >= s.appliedIdx) return s.spread ? Math.round(nominal * s.kAfter) : null;
+    if (s.mode === "now") {
+      if (!s.spread) return null;
+      if (machine === s.machine) {
+        const fx = s.fixed[idx];
+        return fx !== undefined ? fx : Math.round(nominal * s.kPast);
+      }
+      return Math.round(nominal * s.kPast);
+    }
+  }
+  return null;
+}
+
 export function hasOutputOverride(lineKey: string, shiftStartSec: number): boolean {
   return segsOf(lineKey, shiftStartSec).length > 0;
 }

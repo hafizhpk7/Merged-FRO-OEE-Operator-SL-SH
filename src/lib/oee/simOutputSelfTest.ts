@@ -95,6 +95,23 @@ export function runSimOutputSelfTest(): { passed: boolean; results: Check[] } {
       check(`From now on ${pct}%: marginal ratio after the apply time = ${pct}% (+-0.5)`, r.ok && Math.abs(ratio - pct) <= 0.5, `ratio ${ratio.toFixed(2)}%`);
       check(`From now on ${pct}%: past windows stay as they were`, pastSame);
     }
+    // ---- no Effective window at all (line stopped): output can still be simulated ----------------------------------
+    clearActualVsTarget(PLANT, LINE);
+    simStore.setSimNowMs(sh.startSec * 1000 + 4 * 3600_000);
+    simStore.addInjected({ shiftKey: sh.shiftKey, machineCode: bn, type: "downtime", startSec: 0, durationSec: SHIFT_SECONDS });
+    const stopped = getShiftTimeline(bn, getShiftInfo(), undefined, PLANT, "this-shift", LINE);
+    check("setup: the line has no Effective window", !stopped.windows.some((w) => w.type === "run" && w.startSec < 4 * 3600 && w.output > 0));
+    const typesBefore = stopped.windows.map((w) => w.type).join(",");
+    for (const pct of [130, 80]) {
+      const r = applyActualVsTarget(PLANT, LINE, pct, "now");
+      const sn = snapOf("LINE").result.shift;
+      const want = Math.round((pct / 100) * sn.target);
+      check(`stopped line, Hit now ${pct}%: actual = ${pct}% x target (+-1 pcs)`, r.ok && Math.abs(sn.actual - want) <= 1, `target ${sn.target}, actual ${sn.actual}, want ${want}${r.notice ? " | " + r.notice.slice(0, 50) : ""}`);
+    }
+    const typesAfter = getShiftTimeline(bn, getShiftInfo(), undefined, PLANT, "this-shift", LINE).windows.map((w) => w.type).join(",");
+    check("stopped line: window types (statuses) are unchanged by the simulated output", typesAfter === typesBefore);
+    clearActualVsTarget(PLANT, LINE);
+    check("stopped line: Natural gives zero actual again", snapOf("LINE").result.shift.actual === 0);
     check("shift length is unchanged", SHIFT_SECONDS === 28800);
   } finally {
     try {

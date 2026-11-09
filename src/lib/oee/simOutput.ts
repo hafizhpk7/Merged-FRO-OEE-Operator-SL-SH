@@ -12,8 +12,8 @@
  * Minor Stop, Downtime, Speed Loss and NSL windows keep their output; events, statuses, tags and the OEE
  * availability/performance math do not change (SIM_OUTPUT_AFFECTS_OEE = false).
  */
-import { getRepresentativeAsset } from "./assetMaster";
-import { getShiftTimeline } from "./machineEvents";
+import { getMachineStandard, getRepresentativeAsset } from "./assetMaster";
+import { getMachineProfile, getShiftTimeline } from "./machineEvents";
 import { withNaturalOutput } from "./outputOverride";
 import { getNowMs, getShiftInfo } from "./shiftClock";
 import { simStore, type OutputApplyMode, type OutputOverrideSeg } from "./simStore";
@@ -24,15 +24,34 @@ export type ApplyResult = { ok: boolean; notice?: string; k?: number };
 
 type Row = { i: number; line: number; machine: number; f: number; scalable: boolean };
 
-function rowsOf(snap: ReturnType<typeof getTargetSnapshot>, tl: ReturnType<typeof getShiftTimeline>): Row[] {
+/**
+ * One row per revealed window. `machine` is the machine output the factor k applies to and `f` the
+ * machine -> line conversion, so scalable output in line units is machine x f. Normal mode scales the
+ * Effective windows. Spread mode (no Effective window exists) uses the Downtime / Minor Stop windows
+ * with the nominal running output instead, so output can still be simulated.
+ */
+function rowsOf(
+  snap: ReturnType<typeof getTargetSnapshot>,
+  tl: ReturnType<typeof getShiftTimeline>,
+  spread: boolean,
+  ideal: number,
+): Row[] {
   const evType = new Map(tl.events.map((e) => [e.id, e.type]));
   const rows: Row[] = [];
   for (let i = 0; i < snap.windows.length; i++) {
     const mw = tl.windows[i];
     const lw = snap.windows[i];
     if (!mw || !lw) break;
-    const scalable = mw.type === "run" && !(mw.eventId && evType.get(mw.eventId) === "negative_speed_loss");
-    rows.push({ i, line: lw.output, machine: mw.output, f: mw.output > 0 ? lw.output / mw.output : 0, scalable });
+    if (!spread) {
+      const scalable = mw.type === "run" && !(mw.eventId && evType.get(mw.eventId) === "negative_speed_loss");
+      rows.push({ i, line: lw.output, machine: mw.output, f: mw.output > 0 ? lw.output / mw.output : 0, scalable });
+      continue;
+    }
+    const mid = mw.startSec + 15;
+    const seg = snap.plan.segments.find((sg) => mid >= sg.startSec && mid < sg.stopSec);
+    const skuRate = seg ? (seg.srr ?? snap.srrLine ?? ideal) : 0;
+    const scalable = (mw.type === "downtime" || mw.type === "minor_stop") && skuRate > 0;
+    rows.push({ i, line: lw.output, machine: scalable ? ideal / 2 : mw.output, f: scalable ? skuRate / ideal : mw.output > 0 ? lw.output / mw.output : 0, scalable });
   }
   return rows;
 }
@@ -93,15 +112,22 @@ export function applyActualVsTarget(plantId: string, lineId: string, pct: number
     simStore.setOutputOverrides(lineKey, shift.startSec, keepPrior);
     return { ok: false, notice: "Tidak ada standard (target 0): override tidak diterapkan." };
   }
-  const rows = rowsOf(base.snap, base.tl);
+  const ideal = Math.max(1, getMachineStandard(plantId, lineId, bn) ?? getMachineProfile(bn).idealRatePpm);
+  let spread = false;
+  let rows = rowsOf(base.snap, base.tl, false, ideal);
+  if (mode === "now" && !rows.some((r) => r.scalable && r.line > 0)) {
+    // no Effective window yet: spread the output over the stopped windows so it can still be simulated
+    spread = true;
+    rows = rowsOf(base.snap, base.tl, true, ideal);
+  }
   const sumLine = rows.reduce((a, r) => a + r.line, 0);
   const offset = base.snap.result.shift.actual - sumLine;
   let seg: OutputOverrideSeg;
   let notice: string | undefined;
 
   if (mode === "now") {
-    const E = rows.filter((r) => r.scalable).reduce((a, r) => a + r.line, 0);
-    const S = sumLine - E;
+    const E = rows.filter((r) => r.scalable).reduce((a, r) => a + r.machine * r.f, 0);
+    const S = rows.filter((r) => !r.scalable).reduce((a, r) => a + r.line, 0);
     if (!(E > 0)) {
       simStore.setOutputOverrides(lineKey, shift.startSec, keepPrior);
       return { ok: false, notice: "Belum ada output Effective untuk diskalakan: override tidak diterapkan." };
@@ -112,6 +138,7 @@ export function applyActualVsTarget(plantId: string, lineId: string, pct: number
       k = 0;
       notice = "Target tidak tercapai: output Speed Loss dan NSL sudah melebihi nilai yang diminta, Effective dibatasi ke 0.";
     }
+    if (spread) notice = "Belum ada window Effective: output disimulasikan merata di window Downtime/Minor Stop (status window tidak berubah)." + (notice ? " " + notice : "");
     seg = {
       lineKey,
       shiftStartSec: shift.startSec,
@@ -122,15 +149,21 @@ export function applyActualVsTarget(plantId: string, lineId: string, pct: number
       fixed: fitIntegers(rows, k, Math.max(0, want - S)),
       kPast: k,
       kAfter: k,
+      ...(spread ? { spread: true } : {}),
       ...(notice ? { notice } : {}),
     };
   } else {
     // marginal: the rest of the shift gives pct x its own target (computed once, from the natural schedule)
     const endSnap = withNaturalOutput(() => getTargetSnapshot(plantId, lineId, srrMode, shift.endSec * 1000 - 1, null));
     const endTl = withNaturalOutput(() => getShiftTimeline(bn, shift, endSnap.nowSec, plantId, "this-shift", lineId));
-    const endRows = rowsOf(endSnap, endTl).filter((r) => r.i >= N);
+    let mSpread = false;
+    let endRows = rowsOf(endSnap, endTl, false, ideal).filter((r) => r.i >= N);
+    if (!endRows.some((r) => r.scalable && r.line > 0)) {
+      mSpread = true;
+      endRows = rowsOf(endSnap, endTl, true, ideal).filter((r) => r.i >= N);
+    }
     const Tf = endSnap.result.shift.target - T;
-    const Ef = endRows.filter((r) => r.scalable).reduce((a, r) => a + r.line, 0);
+    const Ef = endRows.filter((r) => r.scalable).reduce((a, r) => a + r.machine * r.f, 0);
     const Sf = endRows.filter((r) => !r.scalable).reduce((a, r) => a + r.line, 0);
     if (!(Ef > 0) || !(Tf > 0)) {
       simStore.setOutputOverrides(lineKey, shift.startSec, keepPrior);
@@ -151,13 +184,16 @@ export function applyActualVsTarget(plantId: string, lineId: string, pct: number
       fixed: {},
       kPast: 1,
       kAfter: k,
+      ...(mSpread ? { spread: true } : {}),
       ...(notice ? { notice } : {}),
     };
+    if (mSpread) seg.notice = "Belum ada window Effective: output disimulasikan merata di window Downtime/Minor Stop (status window tidak berubah)." + (notice ? " " + notice : "");
   }
   const merged = [...keepPrior.filter((p) => !(p.mode === "marginal" && p.appliedIdx === seg.appliedIdx)), seg];
   simStore.setOutputOverrides(lineKey, shift.startSec, merged);
   simStore.setOutputUi({ pct, mode, natural: false });
-  return { ok: true, k: seg.kAfter, ...(notice ? { notice } : {}) };
+  const note = seg.notice ?? notice;
+  return { ok: true, k: seg.kAfter, ...(note ? { notice: note } : {}) };
 }
 
 /** Natural output again for this line and shift (baseline numbers restored exactly). */

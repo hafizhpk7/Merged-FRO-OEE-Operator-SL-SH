@@ -35,7 +35,7 @@ import { getLineLossFactor } from "./calibration";
 import { getLine } from "./data";
 import { densifySpans, getMachineDensity, type DenseSpan } from "./eventDensity";
 import { simStore } from "./simStore";
-import { windowOutput } from "./outputOverride";
+import { spreadOutput, windowOutput } from "./outputOverride";
 import { overlapsAny, trimForInjected } from "./simInject";
 
 export type EventType =
@@ -1048,6 +1048,13 @@ export function getShiftTimeline(
       const o = windowOutput(`${plantId}:${viewLineId ?? lineId}`, shift.startSec, machineCode, wIdx, unitsInWindow);
       if (o !== unitsInWindow) {
         naturalOutput = Math.round(unitsInWindow);
+        unitsInWindow = o;
+      }
+    } else if (type === "downtime" || type === "minor_stop") {
+      // "spread" override (no Effective window existed): the window carries simulated output, status unchanged
+      const o = spreadOutput(`${plantId}:${viewLineId ?? lineId}`, shift.startSec, machineCode, wIdx, targetUnitsInWindow);
+      if (o !== null) {
+        naturalOutput = 0;
         unitsInWindow = o;
       }
     }

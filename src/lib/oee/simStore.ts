@@ -38,6 +38,8 @@ export type OutputOverrideSeg = {
   fixed: Record<number, number>;
   kPast: number;
   kAfter: number;
+  /** No Effective window existed: output is spread over the Downtime / Minor Stop windows instead. */
+  spread?: boolean;
   notice?: string;
 };
 

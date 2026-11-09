@@ -22,7 +22,7 @@ import { makeRng } from "./rng";
 import { getLineLossFactor } from "./calibration";
 import { densifySpans, getMachineDensity, type DenseSpan } from "./eventDensity";
 import { simStore } from "./simStore";
-import { windowOutput } from "./outputOverride";
+import { spreadOutput, windowOutput } from "./outputOverride";
 import { overlapsAny, trimForInjected } from "./simInject";
 import { getNowMs } from "./shiftClock";
 
@@ -159,8 +159,10 @@ function computeClosedShiftTotalsFast(
         pdSec += 30;
       } else if (ev.type === "downtime") {
         dSec += 30;
+        units += spreadOutput(`${plantId}:${lineId}`, shiftInfo.startSec, machineCode, w, targetPerWindow) ?? 0;
       } else if (ev.type === "minor_stop") {
         msSec += 30;
+        units += spreadOutput(`${plantId}:${lineId}`, shiftInfo.startSec, machineCode, w, targetPerWindow) ?? 0;
       } else if (ev.type === "speed_loss") {
         runningSec += 30;
         const pct = ev.speedPct ?? 78;
@@ -346,8 +348,10 @@ export function getMachineShiftTotals(
       pdSec += 30;
     } else if (w.type === "downtime") {
       dSec += 30;
+      units += w.output; // 0 unless a simulation "spread" override gave the window output
     } else if (w.type === "minor_stop") {
       msSec += 30;
+      units += w.output;
     } else if (w.type === "speed_loss") {
       runningSec += 30;
       units += w.output;
