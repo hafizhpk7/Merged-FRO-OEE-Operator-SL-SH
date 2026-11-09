@@ -18,6 +18,7 @@ export function OperatorSelectors({
   onMachineChange,
   onBeforeShiftChange,
   includeAllMachines = false,
+  extra,
 }: {
   plantId: string;
   lineId: string;
@@ -26,6 +27,8 @@ export function OperatorSelectors({
   onMachineChange?: (machineId: string) => void;
   onBeforeShiftChange?: (proceed: () => void) => void;
   includeAllMachines?: boolean;
+  /** Extra controls shown before LIST SHIFT (Dashboard: SRR switch and Realisasi per jam). */
+  extra?: React.ReactNode;
 }) {
   const shifts = getMockShifts();
   const [selectedShift, setSelectedShift] = useState<string>(shifts[0]?.id || "shift-3-current");
@@ -44,6 +47,7 @@ export function OperatorSelectors({
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-3 py-2">
+      {extra}
       {/* Shift Selector */}
       <div className="flex items-center gap-2">
         <label className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">

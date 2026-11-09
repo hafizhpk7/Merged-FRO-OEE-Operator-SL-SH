@@ -9,6 +9,7 @@ import {
 } from "./windowEngine";
 import { computeLineOee, type MachineOeeInput } from "./lineOee";
 import { computeOeeFromTotals, aggregateTotals, type MachineTotals } from "./oeeTotals";
+import { runTargetSelfTest } from "./targetSelfTest";
 
 function createWindows(
   types: {
@@ -334,6 +335,16 @@ export function runOeeSelfTest() {
       },
     ),
   );
+
+  // CR 5: target / GAP examples run together with the OEE self-test
+  const target = runTargetSelfTest();
+  results.push({
+    name: `Target / GAP (CR 5, ${target.results.length} checks)`,
+    checks: target.results
+      .filter((c) => !c.passed)
+      .map((c) => ({ field: c.name, expected: 1, actual: 0, passed: false })),
+    passed: target.passed,
+  });
 
   console.table(results.map((r) => ({ name: r.name, passed: r.passed })));
   const passed = results.every((r) => r.passed);

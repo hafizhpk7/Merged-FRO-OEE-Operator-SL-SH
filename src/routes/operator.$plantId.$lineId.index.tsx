@@ -3,6 +3,7 @@ import { OperatorShell } from "@/components/oee/operator/OperatorShell";
 import { OperatorSelectors } from "@/components/oee/operator/OperatorSelectors";
 import { OperatorDashboardContent } from "@/components/oee/operator/OperatorDashboardContent";
 import { ShiftReminderHost } from "@/components/oee/operator/ShiftReminderHost";
+import { SrrSwitch } from "@/components/oee/operator/SrrSwitch";
 import { getShiftInfo } from "@/lib/oee/shiftClock";
 
 export const Route = createFileRoute("/operator/$plantId/$lineId/")({
@@ -17,7 +18,11 @@ function OperatorDashboardPage() {
   return (
     <OperatorShell plantId={plantId} lineId={lineId}>
       <div className="space-y-4">
-        <OperatorSelectors plantId={plantId} lineId={lineId} />
+        <OperatorSelectors
+          plantId={plantId}
+          lineId={lineId}
+          extra={<SrrSwitch plantId={plantId} lineId={lineId} />}
+        />
         <OperatorDashboardContent plantId={plantId} lineId={lineId} shiftKey={shiftKey} />
         <ShiftReminderHost plantId={plantId} lineId={lineId} />
       </div>

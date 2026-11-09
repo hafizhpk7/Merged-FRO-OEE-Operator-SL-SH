@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { CheckCircle2, LayoutGrid, XCircle, ListFilter } from "lucide-react";
+import { CheckCircle2, ClipboardList, LayoutGrid, XCircle, ListFilter, PauseCircle, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FinishWorkOrderModal } from "./FinishWorkOrderModal";
+import { PauseWorkOrderModal } from "./PauseWorkOrderModal";
+import { workOrderStore, useWorkOrder } from "@/lib/oee/workOrderStore";
 import { getLine, getPlant } from "@/lib/oee/data";
 import {
   DropdownMenu,
@@ -15,8 +17,12 @@ import {
 import { REMINDER_TRIGGER_MINUTES } from "@/lib/oee/config";
 import {
   getDemoClockOffsetMs,
+  getShiftInfo,
+  isShiftOverrideActive,
   jumpToShiftEnd,
+  jumpToWibTime,
   setDemoClockOffsetMs,
+  setShiftStartOverrideMin,
   subscribeClock,
 } from "@/lib/oee/shiftClock";
 import { getNow } from "@/lib/oee/shiftClock";
@@ -31,6 +37,11 @@ export function OperatorHeader({
   onBeforeFinishWorkOrder?: (proceed: () => void) => void;
 }) {
   const [finishModalOpen, setFinishModalOpen] = useState(false);
+  const [pauseModalOpen, setPauseModalOpen] = useState(false);
+  const shiftKey = getShiftInfo().shiftKey;
+  const wo = useWorkOrder(lineId, shiftKey);
+  const [shiftOverride, setShiftOverride] = useState(() => isShiftOverrideActive());
+  useEffect(() => subscribeClock(() => setShiftOverride(isShiftOverrideActive())), []);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   // Clock state
@@ -101,6 +112,35 @@ export function OperatorHeader({
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Multi-SKU shift (CR 5) {shiftOverride ? "(ON)" : ""}
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  data-testid="demo-multisku"
+                  onSelect={() => {
+                    setShiftStartOverrideMin(390); // shifts start at :30 (06:30-14:30)
+                    jumpToWibTime(10, 30);
+                  }}
+                  className="text-xs"
+                >
+                  Demo: multi-SKU shift 06:30-14:30 (now 10:30)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="demo-standard-shifts"
+                  disabled={!shiftOverride}
+                  onSelect={() => setShiftStartOverrideMin(null)}
+                  className="text-xs"
+                >
+                  Standard shifts (07:00 / 15:00 / 23:00)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="demo-reset-wo"
+                  onSelect={() => workOrderStore.reset()}
+                  className="text-xs"
+                >
+                  Reset work order state
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   data-testid="demo-reset"
                   disabled={!demoOn}
@@ -139,9 +179,55 @@ export function OperatorHeader({
             </div>
           </div>
 
-          {/* Action Button: Finish Work Order ONLY (No Pause button!) */}
+          {/* Pause Work Order (mock, TG-04) and Finish Work Order */}
           <div className="flex items-center gap-2">
+            {wo.status === "finished" && (
+              <span
+                data-testid="wo-finished-badge"
+                className="rounded-md bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground"
+              >
+                Work order finished
+              </span>
+            )}
+            {wo.status === "paused" && (
+              <span
+                data-testid="wo-paused-badge"
+                className="rounded-md bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800"
+              >
+                Paused (tetap dihitung berjalan)
+              </span>
+            )}
+            {/* CR 3 SM-01..03: Summarization Kemas, available while packing and on partial stop / shift change */}
             <Button
+              variant="outline"
+              asChild
+              data-testid="summarization-button"
+              className="flex h-9 items-center gap-1.5 rounded-md px-4 text-xs font-medium"
+            >
+              <Link to="/operator/$plantId/$lineId/summarization" params={{ plantId, lineId }}>
+                <ClipboardList className="size-4" />
+                Summarization
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              data-testid="pause-wo"
+              disabled={wo.status === "finished"}
+              onClick={() => {
+                if (wo.status === "paused") workOrderStore.resume(lineId, shiftKey);
+                else setPauseModalOpen(true);
+              }}
+              className="flex h-9 items-center gap-1.5 rounded-md border-amber-300 px-4 text-xs font-medium text-amber-800 hover:bg-amber-50"
+            >
+              {wo.status === "paused" ? (
+                <PlayCircle className="size-4" />
+              ) : (
+                <PauseCircle className="size-4" />
+              )}
+              {wo.status === "paused" ? "Resume Work Order" : "Pause Work Order"}
+            </Button>
+            <Button
+              disabled={wo.status === "finished"}
               onClick={() => {
                 if (onBeforeFinishWorkOrder) {
                   onBeforeFinishWorkOrder(() => setFinishModalOpen(true));
@@ -199,7 +285,16 @@ export function OperatorHeader({
         </div>
       </header>
 
-      <FinishWorkOrderModal open={finishModalOpen} onOpenChange={setFinishModalOpen} />
+      <FinishWorkOrderModal
+        open={finishModalOpen}
+        onOpenChange={setFinishModalOpen}
+        onConfirm={() => workOrderStore.finish(lineId, shiftKey)}
+      />
+      <PauseWorkOrderModal
+        open={pauseModalOpen}
+        onOpenChange={setPauseModalOpen}
+        onConfirm={() => workOrderStore.pause(lineId, shiftKey)}
+      />
     </>
   );
 }

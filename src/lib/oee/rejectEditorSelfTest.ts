@@ -4,6 +4,7 @@
  */
 import { J2_LINES_CONFIG } from "./j2-layout-config";
 import { clearCurrentShiftCache, getMachineShiftTotals } from "./machineShiftTotals";
+import { clearMetricsCache } from "./metrics-engine";
 import { getShiftTimeline } from "./machineEvents";
 import { getLineMachineCodesForConfig, rejectConfigStore, type L2Id } from "./rejectConfigStore";
 import { rejectStore } from "./rejectStore";
@@ -51,6 +52,7 @@ export function runRejectEditorSelfTest(): { passed: boolean; results: Check[] }
   const kpi = (line: string, m: string) => {
     // The browser clears this cache through a store subscription; under Node it must be cleared here.
     clearCurrentShiftCache();
+    clearMetricsCache();
     const tl = getShiftTimeline(m, shift, undefined, PLANT, "this-shift", line);
     return {
       total: rejectStore.getTotals(PLANT, line, shiftKey, m).totalReject,

@@ -20,6 +20,8 @@ import "@/lib/oee/reasonGroupSelfTest";
 import "@/lib/oee/reminderSelfTest";
 import "@/lib/oee/rejectL2SelfTest";
 import "@/lib/oee/rejectEditorSelfTest";
+import "@/lib/oee/targetSelfTest";
+import "@/lib/oee/summarizationSelfTest";
 
 function NotFoundComponent() {
   return (

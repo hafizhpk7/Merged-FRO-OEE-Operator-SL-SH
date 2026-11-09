@@ -14,14 +14,18 @@ import { Button } from "@/components/ui/button";
 export function FinishWorkOrderModal({
   open,
   onOpenChange,
+  onConfirm,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Called when Finish is confirmed (CR 5 TG-10: the target values are frozen from here). */
+  onConfirm?: () => void;
 }) {
   const [isFinishing, setIsFinishing] = useState(false);
 
   const handleConfirm = () => {
     setIsFinishing(true);
+    onConfirm?.();
     setTimeout(() => {
       setIsFinishing(false);
       onOpenChange(false);

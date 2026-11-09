@@ -11,6 +11,8 @@ import {
 import { Maximize2 } from "lucide-react";
 import { getLine } from "@/lib/oee/data";
 import { computeOperatorCardMetrics } from "@/lib/oee/operatorCardEngine";
+import { OEE_CARD_FOLLOWS_SRR_SWITCH } from "@/lib/oee/config";
+import { useSrrMode } from "@/lib/oee/srrStore";
 
 export function OeeCard({
   plantId,
@@ -21,7 +23,11 @@ export function OeeCard({
   lineId: string;
   rejectCount: number;
 }) {
-  const [skuOn, setSkuOn] = useState(true);
+  const srrMode = useSrrMode();
+  // CR 5: the card has no toggle of its own; SRR SKU = SKU standard, SRR Line = machine/line rated speed
+  const [localSkuOn, setLocalSkuOn] = useState(true);
+  const skuOn = OEE_CARD_FOLLOWS_SRR_SWITCH ? srrMode === "SKU" : localSkuOn;
+  const setSkuOn = setLocalSkuOn;
   const [expandOpen, setExpandOpen] = useState(false);
 
   const lineObj =
@@ -47,14 +53,23 @@ export function OeeCard({
               </h4>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setSkuOn(!skuOn)}
-                className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-[11px] font-bold text-white transition-colors ${
-                  skuOn ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
-                }`}
-              >
-                {skuOn ? "SKU-ON" : "SKU-OFF"}
-              </button>
+              {OEE_CARD_FOLLOWS_SRR_SWITCH ? (
+                <span
+                  data-testid="oee-card-srr"
+                  className="rounded bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground"
+                >
+                  {srrMode === "SKU" ? "SRR SKU" : "SRR Line"}
+                </span>
+              ) : (
+                <button
+                  onClick={() => setSkuOn(!skuOn)}
+                  className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-[11px] font-bold text-white transition-colors ${
+                    skuOn ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
+                  }`}
+                >
+                  {skuOn ? "SKU-ON" : "SKU-OFF"}
+                </button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -135,7 +150,7 @@ export function OeeCard({
             {/* Line Summary */}
             <div className="rounded-lg border border-border bg-muted/30 p-4 text-center space-y-2">
               <p className="text-xs font-bold uppercase text-muted-foreground">
-                Line OEE Summary ({skuOn ? "SKU-ON" : "SKU-OFF"})
+                Line OEE Summary ({srrMode === "SKU" ? "SRR SKU" : "SRR Line"})
               </p>
               <div className="text-3xl font-extrabold font-mono text-primary">
                 {lineMetrics.oeePct.toFixed(2)}%

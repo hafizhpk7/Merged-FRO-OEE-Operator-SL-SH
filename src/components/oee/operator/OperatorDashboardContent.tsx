@@ -9,6 +9,7 @@ import { getPoForLine } from "@/lib/oee/poMaster";
 import { getQaIntervalForMpq } from "@/lib/oee/qaConfig";
 import { useRejectStore, rejectStore } from "@/lib/oee/rejectStore";
 import { AlertCircle } from "lucide-react";
+import { useTargetSnapshot } from "./useTargetSnapshot";
 
 export function OperatorDashboardContent({
   plantId,
@@ -23,7 +24,9 @@ export function OperatorDashboardContent({
   const poInfo = getPoForLine(lineId);
 
   const { totals } = useRejectStore(plantId, lineId, shiftKey);
-  const grossOutput = 1576; // base sensor output
+  // CR 5: output comes from the same 30 s windows as the target (was a fixed mock number)
+  const targetSnap = useTargetSnapshot(plantId, lineId);
+  const grossOutput = targetSnap.grossOutput;
   const totalReject = totals.totalReject;
   const outputOee = Math.max(0, grossOutput - totalReject);
 

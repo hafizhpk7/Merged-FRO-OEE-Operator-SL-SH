@@ -23,6 +23,9 @@ import { Route as OperatorIndexRouteImport } from './routes/operator.index'
 import { Route as OperatorPlantIdLineIdIndexRouteImport } from './routes/operator.$plantId.$lineId.index'
 import { Route as OperatorPlantIdLineIdReasonRouteImport } from './routes/operator.$plantId.$lineId.reason'
 import { Route as OperatorPlantIdLineIdRejectRouteImport } from './routes/operator.$plantId.$lineId.reject'
+import { Route as OperatorPlantIdLineIdHourlyRouteImport } from './routes/operator.$plantId.$lineId.hourly'
+import { Route as OperatorPlantIdLineIdSummarizationRouteImport } from './routes/operator.$plantId.$lineId.summarization'
+import { Route as OperatorPlantIdLineIdReconcileRouteImport } from './routes/operator.$plantId.$lineId.reconcile'
 import { Route as SplatRouteImport } from './routes/$'
 import { Route as DevIsoBop15RouteImport } from './routes/dev.iso-bop15'
 
@@ -98,6 +101,21 @@ const OperatorPlantIdLineIdRejectRoute = OperatorPlantIdLineIdRejectRouteImport.
   path: '/operator/$plantId/$lineId/reject',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OperatorPlantIdLineIdHourlyRoute = OperatorPlantIdLineIdHourlyRouteImport.update({
+  id: '/operator/$plantId/$lineId/hourly',
+  path: '/operator/$plantId/$lineId/hourly',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OperatorPlantIdLineIdSummarizationRoute = OperatorPlantIdLineIdSummarizationRouteImport.update({
+  id: '/operator/$plantId/$lineId/summarization',
+  path: '/operator/$plantId/$lineId/summarization',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OperatorPlantIdLineIdReconcileRoute = OperatorPlantIdLineIdReconcileRouteImport.update({
+  id: '/operator/$plantId/$lineId/reconcile',
+  path: '/operator/$plantId/$lineId/reconcile',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SplatRoute = SplatRouteImport.update({
   id: '/$',
   path: '$',
@@ -124,6 +142,9 @@ export interface FileRoutesByFullPath {
   '/operator/$plantId/$lineId/': typeof OperatorPlantIdLineIdIndexRoute
   '/operator/$plantId/$lineId/reason': typeof OperatorPlantIdLineIdReasonRoute
   '/operator/$plantId/$lineId/reject': typeof OperatorPlantIdLineIdRejectRoute
+  '/operator/$plantId/$lineId/hourly': typeof OperatorPlantIdLineIdHourlyRoute
+  '/operator/$plantId/$lineId/summarization': typeof OperatorPlantIdLineIdSummarizationRoute
+  '/operator/$plantId/$lineId/reconcile': typeof OperatorPlantIdLineIdReconcileRoute
   '/$': typeof SplatRoute
   '/dev/iso-bop15': typeof DevIsoBop15Route
 }
@@ -142,6 +163,9 @@ export interface FileRoutesByTo {
   '/operator/$plantId/$lineId': typeof OperatorPlantIdLineIdIndexRoute
   '/operator/$plantId/$lineId/reason': typeof OperatorPlantIdLineIdReasonRoute
   '/operator/$plantId/$lineId/reject': typeof OperatorPlantIdLineIdRejectRoute
+  '/operator/$plantId/$lineId/hourly': typeof OperatorPlantIdLineIdHourlyRoute
+  '/operator/$plantId/$lineId/summarization': typeof OperatorPlantIdLineIdSummarizationRoute
+  '/operator/$plantId/$lineId/reconcile': typeof OperatorPlantIdLineIdReconcileRoute
   '/$': typeof SplatRoute
   '/dev/iso-bop15': typeof DevIsoBop15Route
 }
@@ -161,6 +185,9 @@ export interface FileRoutesById {
   '/operator/$plantId/$lineId/': typeof OperatorPlantIdLineIdIndexRoute
   '/operator/$plantId/$lineId/reason': typeof OperatorPlantIdLineIdReasonRoute
   '/operator/$plantId/$lineId/reject': typeof OperatorPlantIdLineIdRejectRoute
+  '/operator/$plantId/$lineId/hourly': typeof OperatorPlantIdLineIdHourlyRoute
+  '/operator/$plantId/$lineId/summarization': typeof OperatorPlantIdLineIdSummarizationRoute
+  '/operator/$plantId/$lineId/reconcile': typeof OperatorPlantIdLineIdReconcileRoute
   '/$': typeof SplatRoute
   '/dev/iso-bop15': typeof DevIsoBop15Route
 }
@@ -181,6 +208,9 @@ export interface FileRouteTypes {
     | '/operator/$plantId/$lineId/'
     | '/operator/$plantId/$lineId/reason'
     | '/operator/$plantId/$lineId/reject'
+    | '/operator/$plantId/$lineId/hourly'
+    | '/operator/$plantId/$lineId/summarization'
+    | '/operator/$plantId/$lineId/reconcile'
     | '/$'
     | '/dev/iso-bop15'
   fileRoutesByTo: FileRoutesByTo
@@ -199,6 +229,9 @@ export interface FileRouteTypes {
     | '/operator/$plantId/$lineId'
     | '/operator/$plantId/$lineId/reason'
     | '/operator/$plantId/$lineId/reject'
+    | '/operator/$plantId/$lineId/hourly'
+    | '/operator/$plantId/$lineId/summarization'
+    | '/operator/$plantId/$lineId/reconcile'
     | '/$'
     | '/dev/iso-bop15'
   id:
@@ -217,6 +250,9 @@ export interface FileRouteTypes {
     | '/operator/$plantId/$lineId/'
     | '/operator/$plantId/$lineId/reason'
     | '/operator/$plantId/$lineId/reject'
+    | '/operator/$plantId/$lineId/hourly'
+    | '/operator/$plantId/$lineId/summarization'
+    | '/operator/$plantId/$lineId/reconcile'
     | '/$'
     | '/dev/iso-bop15'
   fileRoutesById: FileRoutesById
@@ -236,6 +272,9 @@ export interface RootRouteChildren {
   OperatorPlantIdLineIdIndexRoute: typeof OperatorPlantIdLineIdIndexRoute
   OperatorPlantIdLineIdReasonRoute: typeof OperatorPlantIdLineIdReasonRoute
   OperatorPlantIdLineIdRejectRoute: typeof OperatorPlantIdLineIdRejectRoute
+  OperatorPlantIdLineIdHourlyRoute: typeof OperatorPlantIdLineIdHourlyRoute
+  OperatorPlantIdLineIdSummarizationRoute: typeof OperatorPlantIdLineIdSummarizationRoute
+  OperatorPlantIdLineIdReconcileRoute: typeof OperatorPlantIdLineIdReconcileRoute
   SplatRoute: typeof SplatRoute
   DevIsoBop15Route: typeof DevIsoBop15Route
 }
@@ -340,6 +379,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OperatorPlantIdLineIdRejectRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/operator/$plantId/$lineId/hourly': {
+      id: '/operator/$plantId/$lineId/hourly'
+      path: '/operator/$plantId/$lineId/hourly'
+      fullPath: '/operator/$plantId/$lineId/hourly'
+      preLoaderRoute: typeof OperatorPlantIdLineIdHourlyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/operator/$plantId/$lineId/summarization': {
+      id: '/operator/$plantId/$lineId/summarization'
+      path: '/operator/$plantId/$lineId/summarization'
+      fullPath: '/operator/$plantId/$lineId/summarization'
+      preLoaderRoute: typeof OperatorPlantIdLineIdSummarizationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/operator/$plantId/$lineId/reconcile': {
+      id: '/operator/$plantId/$lineId/reconcile'
+      path: '/operator/$plantId/$lineId/reconcile'
+      fullPath: '/operator/$plantId/$lineId/reconcile'
+      preLoaderRoute: typeof OperatorPlantIdLineIdReconcileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/$': {
       id: '/$'
       path: '$'
@@ -372,6 +432,9 @@ const rootRouteChildren: RootRouteChildren = {
   OperatorPlantIdLineIdIndexRoute: OperatorPlantIdLineIdIndexRoute,
   OperatorPlantIdLineIdReasonRoute: OperatorPlantIdLineIdReasonRoute,
   OperatorPlantIdLineIdRejectRoute: OperatorPlantIdLineIdRejectRoute,
+  OperatorPlantIdLineIdHourlyRoute: OperatorPlantIdLineIdHourlyRoute,
+  OperatorPlantIdLineIdSummarizationRoute: OperatorPlantIdLineIdSummarizationRoute,
+  OperatorPlantIdLineIdReconcileRoute: OperatorPlantIdLineIdReconcileRoute,
   SplatRoute: SplatRoute,
   DevIsoBop15Route: DevIsoBop15Route,
 }

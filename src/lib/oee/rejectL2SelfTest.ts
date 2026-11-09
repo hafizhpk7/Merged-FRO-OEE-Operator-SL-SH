@@ -2,10 +2,10 @@
  * Dev self-test for CR 1 part B (reject L2 flag and filter). Run `runRejectL2SelfTest()` in the
  * browser console. It purges everything it writes (corrections, test configuration, snapshots).
  */
-import { getMachineShiftTotals } from "./machineShiftTotals";
+import { clearCurrentShiftCache, getMachineShiftTotals } from "./machineShiftTotals";
 import { J2_LINES_CONFIG } from "./j2-layout-config";
 import { getShiftTimeline } from "./machineEvents";
-import { getMetrics } from "./metrics-engine";
+import { clearMetricsCache, getMetrics } from "./metrics-engine";
 import { getL3Bindings, getLineMachineCodesForConfig, rejectConfigStore, type L2Id } from "./rejectConfigStore";
 import { _forgetSlotSnapshot, rejectStore } from "./rejectStore";
 import { getNowMs, getShiftInfo } from "./shiftClock";
@@ -123,6 +123,9 @@ export function runRejectL2SelfTest(): { passed: boolean; results: Check[] } {
     const owner = new Map<string, string>();
     for (const l of J2_LINES_CONFIG) for (const mm of l.machines) if (mm.code && !owner.has(mm.code)) owner.set(mm.code, l.code);
     let metricsSkipped = 0;
+    // These caches are cleared by a store subscription in the browser only; clear them for Node runs.
+    clearCurrentShiftCache();
+    clearMetricsCache();
     let machinesChecked = 0;
     let chipsOk = true;
     let cardsOk = true;

@@ -17,6 +17,8 @@ export interface ShiftInfo {
   label: string;
   startHour: number;
   endHour: number;
+  /** Minute of day (WIB) the shift starts; 0 mod 60 for standard shifts, 390 for the 06:30 demo. */
+  startMinuteOfDay?: number;
   dateKey: string; // YYYY-MM-DD in WIB
   shiftKey: string; // YYYY-MM-DD:A
   startSec: number; // Unix timestamp in seconds
@@ -83,6 +85,60 @@ export function jumpToShiftEnd(minutesBeforeEnd: number): void {
   const shift = getShiftInfo(real);
   const target = shift.endSec * 1000 - minutesBeforeEnd * 60000;
   setDemoClockOffsetMs(target - Date.now());
+}
+
+/** Sets the clock to today's (WIB) HH:MM, today = the date of the real clock. Demo helper. */
+export function jumpToWibTime(hour: number, minute: number): void {
+  const realWib = getWibDate(Date.now());
+  const targetUtcMs =
+    Date.UTC(realWib.getUTCFullYear(), realWib.getUTCMonth(), realWib.getUTCDate(), hour, minute, 0, 0) -
+    WIB_OFFSET_MS;
+  setDemoClockOffsetMs(targetUtcMs - Date.now());
+}
+
+// ---- Shift start override (CR 5 multi-SKU demo) -------------------------------------------
+// Standard shifts start at 07:00, 15:00 and 23:00. A config override moves the first shift start
+// (in minutes after midnight WIB), e.g. 390 = 06:30 gives 06:30-14:30, 14:30-22:30, 22:30-06:30.
+// Per tab (sessionStorage) so the demo can run next to the standard shifts in another tab.
+export const STANDARD_SHIFT_START_MIN = 7 * 60;
+const SHIFT_OVERRIDE_KEY = "fro_shift_start_override_min";
+let shiftStartOverrideMin: number | null | undefined;
+
+function readShiftOverride(): number | null {
+  if (shiftStartOverrideMin !== undefined) return shiftStartOverrideMin;
+  let v: number | null = null;
+  if (typeof window !== "undefined") {
+    try {
+      const raw = sessionStorage.getItem(SHIFT_OVERRIDE_KEY);
+      const n = raw === null ? NaN : Number(raw);
+      v = Number.isFinite(n) && n >= 0 && n < 1440 ? n : null;
+    } catch {
+      v = null;
+    }
+  }
+  shiftStartOverrideMin = v;
+  return v;
+}
+
+export function getShiftStartMinuteOfDay(): number {
+  return readShiftOverride() ?? STANDARD_SHIFT_START_MIN;
+}
+
+export function isShiftOverrideActive(): boolean {
+  return readShiftOverride() !== null;
+}
+
+export function setShiftStartOverrideMin(min: number | null): void {
+  shiftStartOverrideMin = min;
+  if (typeof window !== "undefined") {
+    try {
+      if (min === null) sessionStorage.removeItem(SHIFT_OVERRIDE_KEY);
+      else sessionStorage.setItem(SHIFT_OVERRIDE_KEY, String(min));
+    } catch {
+      // ignore: the in-memory override still applies
+    }
+  }
+  clockListeners.forEach((l) => l());
 }
 
 export function subscribeClock(listener: () => void): () => void {
@@ -173,38 +229,35 @@ export function formatEventDuration(sec: number): string {
  * Calculates shift info for any given reference timestamp
  */
 export function getShiftInfo(refDate: Date = getNow()): ShiftInfo {
+  return computeShiftInfo(refDate, getShiftStartMinuteOfDay());
+}
+
+/** Pure shift lookup for a given first shift start (minutes after midnight WIB). */
+export function computeShiftInfo(refDate: Date, firstStart: number): ShiftInfo {
   const ms = refDate.getTime();
   const wib = getWibDate(ms);
-  const hour = wib.getUTCHours();
+  const minuteOfDay = wib.getUTCHours() * 60 + wib.getUTCMinutes();
 
-  let code: ShiftCode = "A";
-  let startHour = 7;
-  let endHour = 15;
+  // Three 8 h shifts starting at the (overridable) first shift start; the shift index follows the
+  // time since that start, modulo one day.
+  const rel = (((minuteOfDay - firstStart) % 1440) + 1440) % 1440;
+  const idx = Math.min(2, Math.floor(rel / 480));
+  const code = (["A", "B", "C"] as const)[idx] as ShiftCode;
+  const startMod = (firstStart + idx * 480) % 1440;
+  const startHour = Math.floor(startMod / 60);
+  const startMinute = startMod % 60;
+  const endMod = (startMod + 480) % 1440;
+  const endHour = Math.floor(endMod / 60);
 
-  // Shift C starts at 23:00 WIB
-  if (hour >= 7 && hour < 15) {
-    code = "A";
-    startHour = 7;
-  } else if (hour >= 15 && hour < 23) {
-    code = "B";
-    startHour = 15;
-    endHour = 23;
-  } else {
-    code = "C";
-    startHour = 23;
-    endHour = 7;
-  }
-
-  // Calculate WIB date key based on shift definition
-  let wibDateForDateKey = wib;
-  if (code === "C" && hour < 7) {
-    // If Shift C, and before 7am, it's the date key of "yesterday"
-    wibDateForDateKey = getWibDate(ms - 86400000);
-  }
+  // The shift began yesterday when its start lies later in the day than now (cross-midnight)
+  const wibDateForDateKey = startMod > minuteOfDay ? getWibDate(ms - 86400000) : wib;
 
   const dateKey = `${wibDateForDateKey.getUTCFullYear()}-${String(wibDateForDateKey.getUTCMonth() + 1).padStart(2, "0")}-${String(wibDateForDateKey.getUTCDate()).padStart(2, "0")}`;
   const shiftKey = `${dateKey}:${code}`;
-  const label = `Shift ${code} · ${String(startHour).padStart(2, "0")}:00-${String((startHour + 8) % 24).padStart(2, "0")}:59 WIB`;
+  const lastMod = (startMod + 479) % 1440;
+  const hh = (n: number) => String(Math.floor(n / 60)).padStart(2, "0");
+  const mm = (n: number) => String(n % 60).padStart(2, "0");
+  const label = `Shift ${code} · ${hh(startMod)}:${mm(startMod)}-${hh(lastMod)}:${mm(lastMod)} WIB`;
 
   // Calculate start epoch seconds
   const startWibMs = Date.UTC(
@@ -212,7 +265,7 @@ export function getShiftInfo(refDate: Date = getNow()): ShiftInfo {
     wibDateForDateKey.getUTCMonth(),
     wibDateForDateKey.getUTCDate(),
     startHour,
-    0,
+    startMinute,
     0,
     0,
   );
@@ -227,6 +280,7 @@ export function getShiftInfo(refDate: Date = getNow()): ShiftInfo {
     label,
     startHour,
     endHour,
+    startMinuteOfDay: startMod,
     dateKey,
     shiftKey,
     startSec,

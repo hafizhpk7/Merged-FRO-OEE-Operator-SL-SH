@@ -243,3 +243,6 @@ export const RUN_RATE_THRESHOLDS = {
 export type Role = "shift-leader" | "section-head" | "operator";
 export const ROLE_DEFAULT: Role = "section-head";
 export const ROLE_PERSISTENCE: "session" | "local" = "session";
+
+/** CR 5: the OEE card has no SKU-ON/OFF toggle of its own; it follows the universal SRR switch. */
+export const OEE_CARD_FOLLOWS_SRR_SWITCH = true;
