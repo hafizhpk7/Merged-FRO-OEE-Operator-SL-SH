@@ -17,18 +17,23 @@ import {
 import { computeLineOee } from "./lineOee";
 import { rejectStore } from "./rejectStore";
 import { getLineLossFactor } from "./calibration";
-import { getNowMs } from "./shiftClock";
+import { getNowMs, getShiftInfoAt } from "./shiftClock";
 
 export function computeOperatorCardMetrics(
   plantId: string,
   lineId: string,
   skuOn: boolean,
-  nowMs: number = getNowMs(),
+  nowMsIn: number = getNowMs(),
+  /** Selected completed shift (epoch s): computed until its end, never "now". */
+  viewStartSec?: number | null,
 ): { lineMetrics: OeeMetrics; machineMetrics: Record<string, OeeMetrics>; bottleneck: string } {
   const lineObj =
     getLine(plantId, "A", lineId) || getLine(plantId, "B", lineId) || getLine(plantId, "C", lineId);
   const machines = lineObj?.machines || [];
-  const shiftInfo = getShiftInfo();
+  const cur = getShiftInfo();
+  const past = viewStartSec != null && viewStartSec < cur.startSec;
+  const shiftInfo = past ? getShiftInfoAt(viewStartSec as number) : cur;
+  const nowMs = past ? shiftInfo.endSec * 1000 : nowMsIn;
   const shiftStartMs = shiftInfo.startSec * 1000;
   const nowFloor30s = Math.floor(nowMs / 30000) * 30000;
   const elapsedSec = Math.min(

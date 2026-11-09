@@ -10,7 +10,7 @@ import {
 } from "./config";
 import { getLine } from "./data";
 import { countUncommentedByType, getShiftTimeline } from "./machineEvents";
-import { getShiftInfo, SHIFT_SECONDS, type ShiftInfo } from "./shiftClock";
+import { getNow, getShiftInfo, SHIFT_SECONDS, type ShiftInfo } from "./shiftClock";
 import type { ClassifiableType } from "./reasonConstants";
 
 export type ReminderCounts = {
@@ -184,7 +184,7 @@ export function logShown(
     shiftId: shift.shiftKey,
     triggerMinute: minute,
     user,
-    shownAt: new Date().toISOString(),
+    shownAt: getNow().toISOString(),
     // dismissed unless the operator chooses Classify (updated by logAction)
     action: "close",
     counts: counts.byType,

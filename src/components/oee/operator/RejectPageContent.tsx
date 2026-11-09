@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { REJECT_L2, rejectConfigStore, type L2Id, type RejectCard } from "@/lib/oee/rejectConfigStore";
 import { rejectStore, useRejectStore } from "@/lib/oee/rejectStore";
-import { formatTimeWib, getNowMs, getShiftInfo } from "@/lib/oee/shiftClock";
+import { formatTimeWib, getNowMs, getShiftInfoByKey } from "@/lib/oee/shiftClock";
+import { useSimWindowBucket } from "@/lib/oee/useSimTick";
 import { getLine } from "@/lib/oee/data";
 import { KonfigurasiDetailModal } from "./KonfigurasiDetailModal";
 import { L2Badge } from "./L2Badge";
@@ -14,8 +15,8 @@ type Filter = "ALL" | L2Id;
 
 /** Hourly buckets visible on the page: shift start .. current hour (all 8 for a closed shift). */
 function useBuckets(shiftKey: string) {
-  const shift = getShiftInfo();
-  const isCurrent = shiftKey === shift.shiftKey;
+  const shift = getShiftInfoByKey(shiftKey);
+  const isCurrent = shift.isCurrent;
   const nowSec = Math.floor(getNowMs() / 1000);
   const currentIdx = isCurrent
     ? Math.max(0, Math.min(7, Math.floor((nowSec - shift.startSec) / 3600)))
@@ -45,6 +46,7 @@ export function RejectPageContent({
 
   // Subscribes this page to store changes (corrections re-render chips, cards and charts).
   useRejectStore(plantId, lineId, shiftKey);
+  useSimWindowBucket(); // current shift: values and hourly buckets grow with the simulated clock
   const { labels, currentIdx } = useBuckets(shiftKey);
 
   const [filter, setFilter] = useState<Filter>("ALL");

@@ -5,7 +5,9 @@ import { ShiftPerformanceCard } from "./ShiftPerformanceCard";
 import { QaInspectionModal } from "./QaInspectionModal";
 import { LegacyShiftReminderModal } from "./LegacyShiftReminderModal";
 import { LEGACY_SHIFT_REMINDER, SHIFT_REMINDER_LEAD_MIN } from "@/lib/oee/config";
+import { getNow, getNowMs } from "@/lib/oee/shiftClock";
 import { useLineOperationalMode } from "@/lib/oee/assetMaster";
+import { useViewShift } from "@/lib/oee/viewShiftStore";
 import { getPoForLine } from "@/lib/oee/poMaster";
 import { getQaIntervalForMpq } from "@/lib/oee/qaConfig";
 import { useRejectStore, rejectStore } from "@/lib/oee/rejectStore";
@@ -21,6 +23,7 @@ export function OperatorDashboardContent({
   lineId: string;
   shiftKey: string;
 }) {
+  const viewingPast = useViewShift().isPast; // a completed shift shows frozen values: no QA alert
   const opMode = useLineOperationalMode(plantId, lineId);
   const isActiveLine = opMode.mode === "full";
   const poInfo = getPoForLine(lineId);
@@ -35,15 +38,21 @@ export function OperatorDashboardContent({
   // QA Inspection Alert state
   const intervalPcs = getQaIntervalForMpq(poInfo.mpq);
   const [qaStats, setQaStats] = useState({ sample: 227, released: 187, reject: 40 });
+  // Density change / simulation reset: QA counters start over.
+  useEffect(() => {
+    const reset = () => setQaStats({ sample: 227, released: 187, reject: 40 });
+    window.addEventListener("fro-sim-reset", reset);
+    return () => window.removeEventListener("fro-sim-reset", reset);
+  }, []);
   const [qaModalOpen, setQaModalOpen] = useState(false);
   const [lastTriggeredOutput, setLastTriggeredOutput] = useState(0);
 
   useEffect(() => {
-    if (isActiveLine && outputOee > 0 && outputOee - lastTriggeredOutput >= intervalPcs) {
+    if (isActiveLine && !viewingPast && outputOee > 0 && outputOee - lastTriggeredOutput >= intervalPcs) {
       setQaModalOpen(true);
       setLastTriggeredOutput(outputOee);
     }
-  }, [outputOee, lastTriggeredOutput, intervalPcs, isActiveLine]);
+  }, [outputOee, lastTriggeredOutput, intervalPcs, isActiveLine, viewingPast]);
 
   const handleQaSubmit = (result: "Released" | "Reject", note: string) => {
     setQaStats((prev) => ({
@@ -60,7 +69,7 @@ export function OperatorDashboardContent({
         rejectTypeId: "rm.reject-seal",
         rejectTypeName: "Reject seal (QA)",
         qty: 1,
-        at: Math.floor(Date.now() / 1000),
+        at: Math.floor(getNowMs() / 1000),
         note: note || "QA Inspection rejection",
         shiftKey,
       });
@@ -77,7 +86,7 @@ export function OperatorDashboardContent({
     if (!LEGACY_SHIFT_REMINDER) return;
     // Check if shift is ending within SHIFT_REMINDER_LEAD_MIN (10 min)
     const checkTimer = setInterval(() => {
-      const now = new Date();
+      const now = getNow();
       const endHour = 15; // Shift end at 15:00
       const endMin = 0;
       const targetMin = endHour * 60 + endMin;

@@ -16,6 +16,7 @@ import { getLine, PLANTS } from "./data";
 import { isOeeActiveLine, LINE_TOPOLOGY } from "./config";
 import { J2_LINES_CONFIG } from "./j2-layout-config";
 import { getMachineProfile } from "./machineEvents";
+import { simStore } from "./simStore";
 
 export type LineOperation = "SEQ" | "OR";
 
@@ -97,54 +98,24 @@ export function getLineAssetMaster(plantId: string, lineId: string): LineAssetMa
 }
 
 // ---- override layer (simulation) ---------------------------------------------------------------
-const OVERRIDE_KEY = "simOverrides.srrLine";
-const listeners = new Set<() => void>();
-let overrides: Record<string, number | null> | undefined;
-let version = 0;
-
-function loadOverrides(): Record<string, number | null> {
-  if (overrides) return overrides;
-  let v: Record<string, number | null> = {};
-  if (typeof window !== "undefined") {
-    try {
-      const raw = sessionStorage.getItem(OVERRIDE_KEY);
-      if (raw) v = JSON.parse(raw) as Record<string, number | null>;
-    } catch {
-      v = {};
-    }
-  }
-  overrides = v;
-  return v;
-}
+// The overrides live in simStore (srrOverrides, also persisted under sessionStorage "simOverrides.srrLine").
 
 /** Sets (number / null) or clears (undefined) the SRR Line override of a line. */
 export function setSrrLine(plantId: string, lineId: string, value: number | null | undefined): void {
-  const next = { ...loadOverrides() };
   const key = `${plantId}:${lineId}`;
-  if (value === undefined) delete next[key];
-  else next[key] = value === null ? null : Number.isFinite(value) && value > 0 ? value : null;
-  overrides = next;
-  version += 1;
-  if (typeof window !== "undefined") {
-    try {
-      sessionStorage.setItem(OVERRIDE_KEY, JSON.stringify(next));
-    } catch {
-      // ignore
-    }
-  }
-  listeners.forEach((l) => l());
+  if (value === undefined) simStore.setSrrOverride(key, undefined);
+  else simStore.setSrrOverride(key, value === null ? null : Number.isFinite(value) && value > 0 ? value : null);
 }
 
 export function subscribeAssetMaster(l: () => void) {
-  listeners.add(l);
-  return () => listeners.delete(l);
+  return simStore.subscribe(l);
 }
-export const assetMasterVersion = () => version;
+export const assetMasterVersion = () => simStore.version();
 
 // ---- accessors -----------------------------------------------------------------------------------
 /** SRR Line in ppm after the override layer; null when not configured. */
 export function getLineSrr(plantId: string, lineId: string): number | null {
-  const o = loadOverrides();
+  const o = simStore.get().srrOverrides;
   const key = `${plantId}:${lineId}`;
   if (key in o) return o[key] ?? null;
   return getLineAssetMaster(plantId, lineId).srrLine;

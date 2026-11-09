@@ -3,6 +3,7 @@ import { getTargetSnapshot, type TargetSnapshot } from "@/lib/oee/targetService"
 import { useSrrMode } from "@/lib/oee/srrStore";
 import { useWorkOrder } from "@/lib/oee/workOrderStore";
 import { getNowMs, getShiftInfo, subscribeClock } from "@/lib/oee/shiftClock";
+import { useViewShift } from "@/lib/oee/viewShiftStore";
 import { TARGET_WINDOW_SEC } from "@/lib/oee/targetEngine";
 
 /**
@@ -11,7 +12,8 @@ import { TARGET_WINDOW_SEC } from "@/lib/oee/targetEngine";
  */
 export function useTargetSnapshot(plantId: string, lineId: string): TargetSnapshot {
   const mode = useSrrMode();
-  const shiftKey = getShiftInfo().shiftKey;
+  const view = useViewShift();
+  const shiftKey = view.info.shiftKey;
   const wo = useWorkOrder(lineId, shiftKey);
   const [, setTick] = useState(0);
 
@@ -26,8 +28,8 @@ export function useTargetSnapshot(plantId: string, lineId: string): TargetSnapsh
 
   const bucket = Math.floor(getNowMs() / (TARGET_WINDOW_SEC * 1000));
   return useMemo(
-    () => getTargetSnapshot(plantId, lineId, mode),
+    () => getTargetSnapshot(plantId, lineId, mode, getNowMs(), view.isPast ? view.info.startSec : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [plantId, lineId, mode, bucket, shiftKey, wo.status, wo.finishedAtSec, getShiftInfo().startSec],
+    [plantId, lineId, mode, view.isPast ? 0 : bucket, shiftKey, wo.status, wo.finishedAtSec, getShiftInfo().startSec, view.info.startSec],
   );
 }

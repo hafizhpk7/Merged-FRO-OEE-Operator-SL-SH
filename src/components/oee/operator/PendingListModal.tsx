@@ -45,13 +45,19 @@ export function PendingListModal({
 
   const [tab, setTab] = useState<"uncommented" | "committed">("uncommented");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Dense shifts have hundreds of rows: render a page at a time (selection still covers every row).
+  const PAGE = 50;
+  const [limit, setLimit] = useState(PAGE);
   const allRef = useRef<HTMLInputElement>(null);
 
   // Opening or switching the type chip resets tab and selection (GR-01).
   useEffect(() => {
     setTab("uncommented");
     setSelected(new Set());
+    setLimit(PAGE);
   }, [open, filter]);
+
+  useEffect(() => setLimit(PAGE), [tab]);
 
   const ofType = useMemo(() => events.filter((e) => e.type === filter), [events, filter]);
   const uncommented = useMemo(() => ofType.filter((e) => !e.isTagged), [ofType]);
@@ -174,6 +180,19 @@ export function PendingListModal({
           </div>
         )}
 
+        {rows.length > PAGE && (
+          <div className="flex items-center gap-3 text-xs text-muted-foreground" data-testid="overview-pager">
+            <span>
+              Menampilkan {Math.min(limit, rows.length)} dari {rows.length}
+            </span>
+            {limit < rows.length && (
+              <Button variant="outline" size="sm" className="h-7 text-xs" data-testid="overview-more" onClick={() => setLimit((n) => n + PAGE)}>
+                Tampilkan {Math.min(PAGE, rows.length - limit)} lagi
+              </Button>
+            )}
+          </div>
+        )}
+
         <div className="space-y-2">
           {rows.length === 0 ? (
             <div className="rounded-md border border-dashed border-border p-8 text-center text-xs text-muted-foreground">
@@ -182,7 +201,7 @@ export function PendingListModal({
                 : "Belum ada yang di-commit."}
             </div>
           ) : (
-            rows.map((e) => {
+            rows.slice(0, limit).map((e) => {
               const checked = selected.has(e.id);
               return (
                 <div

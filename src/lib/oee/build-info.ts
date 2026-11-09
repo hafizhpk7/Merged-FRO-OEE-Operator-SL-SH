@@ -1,4 +1,4 @@
-export const BUILD_ID = "r47 · 09 Nov 2026 WIB · SRR-master";
+export const BUILD_ID = "r48 · 09 Nov 2026 WIB · SIM-core";
 
 export const FEATURES = {
   routeTreeManualSync: true,
@@ -115,6 +115,14 @@ export const FEATURES = {
   srrLineOverrideLayer: true,
   srrLineMissingHeaderChip: true,
   assetMasterSelfTest: true,
+  simStoreCentralClock: true,
+  simTimeScalePause: true,
+  simLiveShiftGrowth: true,
+  simCompletedShiftUntilEnd: true,
+  simViewShiftSelector: true,
+  simEventDensity: true,
+  simDenseUsability: true,
+  simSelfTest: true,
 };
 
 if (typeof window !== "undefined") {

@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import { getEntry, legacyFirstL2, migrateL3, parseEntryId } from "./rejectConfig";
 import { l3Name, rejectConfigStore, type L2Id } from "./rejectConfigStore";
 import { makeRng, rand } from "./rng";
-import { formatTimeWib, getShiftInfo } from "./shiftClock";
+import { formatTimeWib, getShiftInfoByKey, getShiftStartSecByKey } from "./shiftClock";
 import { getNow, getNowMs } from "./shiftClock";
 
 export type RejectLogSource = "sensor" | "manual" | "qa" | "correction";
@@ -248,12 +248,12 @@ export function _forgetSlotSnapshot(plantId: string, lineId: string, shiftKey: s
  */
 function generateBaselineLogs(plantId: string, lineId: string, shiftKey: string): RejectLog[] {
   const logs: RejectLog[] = [];
-  const shiftInfo = getShiftInfo();
+  const shiftInfo = getShiftInfoByKey(shiftKey);
   const shiftStartSec = shiftInfo.startSec;
   const nowSec = Math.floor(getNowMs() / 1000);
 
   const groups = new Map<string, { machineCode: string; l3Id: string; l2Id: L2Id }>();
-  for (const slot of slotsForShift(plantId, lineId, shiftKey, shiftKey === shiftInfo.shiftKey)) {
+  for (const slot of slotsForShift(plantId, lineId, shiftKey, shiftInfo.isCurrent)) {
     groups.set(`${slot.machineCode}|${slot.l3Id}`, {
       machineCode: slot.machineCode,
       l3Id: slot.l3Id,
@@ -268,7 +268,7 @@ function generateBaselineLogs(plantId: string, lineId: string, shiftKey: string)
 
     for (let h = 0; h < 8; h++) {
       const hourStartSec = shiftStartSec + h * 3600;
-      if (shiftKey === shiftInfo.shiftKey && hourStartSec > nowSec) {
+      if (shiftInfo.isCurrent && hourStartSec > nowSec) {
         continue;
       }
 
@@ -322,7 +322,7 @@ export const rejectStore = {
   getAllLogs(plantId: string, lineId: string, shiftKey: string): RejectLog[] {
     const state = currentCache;
     const baseline = generateBaselineLogs(plantId, lineId, shiftKey);
-    const shiftStartSec = getShiftInfo().startSec;
+    const shiftStartSec = getShiftStartSecByKey(shiftKey);
     const correctionLogs: RejectLog[] = state.corrections
       .filter((c) => c.plantId === plantId && c.lineId === lineId && c.shiftKey === shiftKey)
       .map((c) => ({
@@ -387,7 +387,7 @@ export const rejectStore = {
     const state = currentCache;
     const baseline = generateBaselineLogs(plantId, lineId, shiftKey);
     const removed = state.removedLogIds;
-    const shiftStartSec = getShiftInfo().startSec;
+    const shiftStartSec = getShiftStartSecByKey(shiftKey);
     const actual: number[] = new Array(8).fill(0);
     const current: number[] = new Array(8).fill(0);
     const match = (l: RejectLog) =>
@@ -535,7 +535,7 @@ export const rejectStore = {
       }
       hourAfter[h] = (hourAfter[h] ?? 0) + (e.c.after - e.before);
     }
-    const shiftStartSec = getShiftInfo().startSec;
+    const shiftStartSec = getShiftStartSecByKey(payload.shiftKey);
     for (const [h, v] of Object.entries(hourAfter)) {
       if (v < 0) {
         const label = formatTimeWib(shiftStartSec + Number(h) * 3600);
@@ -658,7 +658,7 @@ export const rejectStore = {
     const state = getStoredState();
     entrySeq += 1;
     const newLog: RejectLog = {
-      id: `qa-${Date.now()}-${entrySeq}`,
+      id: `qa-${getNowMs()}-${entrySeq}`,
       plantId: payload.plantId,
       lineId: payload.lineId,
       machineCode: payload.machineCode,
@@ -670,7 +670,7 @@ export const rejectStore = {
       source: "qa",
       at: payload.at,
       ...(payload.note ? { note: payload.note } : {}),
-      createdAt: Date.now(),
+      createdAt: getNowMs(),
       category: "Reject",
       shiftKey: payload.shiftKey,
     };

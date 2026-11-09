@@ -1,3 +1,4 @@
+import { getNow, getNowMs } from "./shiftClock";
 import { useSyncExternalStore } from "react";
 
 export type ReasonTag = {
@@ -140,7 +141,7 @@ function commitWindows(
 ) {
   const nextCauses = { ...causesCache };
   const nextMeta: Meta = { versions: { ...metaCache.versions }, audit: [...metaCache.audit] };
-  const at = new Date().toISOString();
+  const at = getNow().toISOString();
   for (const ch of changes) {
     const before = causesCache[ch.key] ?? [];
     if (ch.after.length === 0) delete nextCauses[ch.key];
@@ -195,7 +196,7 @@ export const reasonTagStore = {
       l2Category: payload.l2Category,
       l3Reason: payload.l3Reason,
       ...(payload.notes ? { notes: payload.notes } : {}),
-      taggedAt: new Date().toISOString(),
+      taggedAt: getNow().toISOString(),
       operatorName: payload.operatorName || "Operator",
     };
     saveStoredTags(tags);
@@ -254,7 +255,7 @@ export const reasonTagStore = {
       };
     }
     groupSeq += 1;
-    const groupId = `CL-S${groupSeq}-${Date.now().toString(36)}`;
+    const groupId = `CL-S${groupSeq}-${getNowMs().toString(36)}`;
     const stamped = causes.map((c) => ({
       ...c,
       mode: "single" as const,
@@ -291,8 +292,8 @@ export const reasonTagStore = {
       };
     }
     groupSeq += 1;
-    const groupId = `CL-G${groupSeq}-${Date.now().toString(36)}`;
-    const taggedAt = new Date().toISOString();
+    const groupId = `CL-G${groupSeq}-${getNowMs().toString(36)}`;
+    const taggedAt = getNow().toISOString();
     const changes = windows.map((w, i) => ({
       key: w.id,
       after: [

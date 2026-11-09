@@ -1,6 +1,7 @@
-import { useState } from "react";
 import { Clock, Cpu } from "lucide-react";
 import { getMockShifts, type ShiftItem } from "@/lib/oee/shiftMaster";
+import { useSimWindowBucket } from "@/lib/oee/useSimTick";
+import { useViewShift, viewShiftStore } from "@/lib/oee/viewShiftStore";
 import { getLine } from "@/lib/oee/data";
 import {
   Select,
@@ -30,8 +31,15 @@ export function OperatorSelectors({
   /** Extra controls shown before LIST SHIFT (Dashboard: SRR switch and Realisasi per jam). */
   extra?: React.ReactNode;
 }) {
+  useSimWindowBucket(480); // the list follows simulated time (shift rollover)
   const shifts = getMockShifts();
-  const [selectedShift, setSelectedShift] = useState<string>(shifts[0]?.id || "shift-3-current");
+  // LIST SHIFT drives every operator page through the shared view-shift store.
+  const view = useViewShift();
+  const selectedShift = `shift-${view.info.startSec}`;
+  const setSelectedShift = (id: string) => {
+    const s = shifts.find((x) => x.id === id);
+    viewShiftStore.set(!s || s.isCurrent ? null : s.startSec);
+  };
 
   const line =
     getLine(plantId, "A", lineId) || getLine(plantId, "B", lineId) || getLine(plantId, "C", lineId);
@@ -64,7 +72,7 @@ export function OperatorSelectors({
             }
           }}
         >
-          <SelectTrigger className="h-8 w-64 bg-card text-xs font-medium border-border">
+          <SelectTrigger data-testid="list-shift" className="h-8 w-64 bg-card text-xs font-medium border-border">
             <SelectValue placeholder="Select shift" />
           </SelectTrigger>
           <SelectContent align="end">

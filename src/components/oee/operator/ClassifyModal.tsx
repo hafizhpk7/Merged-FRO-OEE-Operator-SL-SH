@@ -27,7 +27,7 @@ import {
   operatorCauseKey,
   type MachineEvent,
 } from "@/lib/oee/machineEvents";
-import { formatTimeWib, type ShiftInfo } from "@/lib/oee/shiftClock";
+import { formatTimeWib, getNow, type ShiftInfo } from "@/lib/oee/shiftClock";
 import {
   canAddCause,
   canSaveSingle as canSaveSingleDraft,
@@ -164,7 +164,7 @@ export function ClassifyModal({
       l3ReasonId: reason.id,
       l3ReasonName: reason.name,
       ...(c.desc.trim() ? { description: c.desc.trim() } : {}),
-      taggedAt: new Date().toISOString(),
+      taggedAt: getNow().toISOString(),
     };
   };
 

@@ -249,3 +249,17 @@ export const OEE_CARD_FOLLOWS_SRR_SWITCH = true;
 
 /** Operator tabs blocked while the SRR Line of the line is missing in the Asset Management master. */
 export const SRR_BLOCKED_TABS: readonly string[] = ["reason"];
+
+/**
+ * Event density of the simulated machine events. "high" for the five J2 pilot lines, "normal" for the
+ * others; the simulation store can override it for every line. Loss minutes are the same in all modes.
+ */
+export const EVENT_DENSITY: {
+  pilot: "normal" | "high" | "extreme";
+  other: "normal" | "high" | "extreme";
+  pilotLines: string[];
+} = {
+  pilot: "high",
+  other: "normal",
+  pilotLines: ["TUP01", "TUP13", "TUP14", "BOP15", "BOP16"],
+};

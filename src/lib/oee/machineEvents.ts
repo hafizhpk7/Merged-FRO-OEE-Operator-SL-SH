@@ -33,6 +33,8 @@ import { rejectStore } from "./rejectStore";
 import { reasonTagStore } from "./reasonTagStore";
 import { getLineLossFactor } from "./calibration";
 import { getLine } from "./data";
+import { densifySpans, getMachineDensity, type DenseSpan } from "./eventDensity";
+import { simStore } from "./simStore";
 
 export type EventType =
   | "run"
@@ -467,9 +469,19 @@ function injectNslEvents(
   rawEvents: MachineEvent[],
   seed: string,
   ctx: { plantId: string; machineCode: string; windowStartMs: number; orders: ProductionOrder[] },
+  /** Dense mode: the NSL plan of the base schedule, cut at the ongoing event (stable while time grows). */
+  fixed?: { plan: ReturnType<typeof planNslEvents>; limitSec: number },
 ): void {
   let n = 0;
-  for (const plan of planNslEvents(rawEvents, seed)) {
+  const plans = fixed
+    ? fixed.plan
+        .filter((p) => p.startSec < fixed.limitSec)
+        .map((p) => {
+          const endSec = Math.min(p.endSec, fixed.limitSec);
+          return { ...p, endSec, durationSec: Math.max(30, endSec - p.startSec) };
+        })
+    : planNslEvents(rawEvents, seed);
+  for (const plan of plans) {
     const { startSec, endSec, durationSec } = plan;
     n += 1;
     const id = `${ctx.plantId}-${ctx.machineCode}-EV-NSL-${String(n).padStart(2, "0")}`;
@@ -692,6 +704,92 @@ export function getShiftTimeline(
     );
   }
 
+  // Event density: re-lay the Minor Stop / Speed Loss time of the base schedule as many short events.
+  // Layout is computed on the whole base schedule, so history never changes while time grows.
+  const density = getMachineDensity(plantId, machineCode);
+  let nslFixed: ReturnType<typeof planNslEvents> | undefined;
+  if (density !== "normal") {
+    const retype = (e: MachineEvent): DenseSpan["type"] =>
+      e.type === "minor_stop" && e.endSec - e.startSec > DOWNTIME_THRESHOLD_SEC ? "downtime" : (e.type as DenseSpan["type"]);
+    const baseSpans: DenseSpan[] = rawEvents.map((e) => ({
+      startSec: e.startSec,
+      endSec: e.endSec,
+      type: retype(e),
+      ...(e.speedPct !== undefined ? { speedPct: e.speedPct } : {}),
+    }));
+    nslFixed = planNslEvents(baseSpans, seed);
+    const dense = densifySpans(baseSpans, nslFixed, seed, density);
+    // Negative Speed Loss keeps exactly the windows it owns in the dense schedule.
+    nslFixed = dense
+      .filter((d) => d.type === "nsl")
+      .map((d) => ({ startSec: d.startSec, endSec: d.endSec, durationSec: d.endSec - d.startSec, speedPct: d.speedPct ?? 125 }));
+    // kept Planned / Downtime events take the window-aligned span they own in the dense schedule
+    const keep: MachineEvent[] = [];
+    for (const sp of dense) {
+      if (sp.src === undefined || (sp.type !== "planned" && sp.type !== "downtime")) continue;
+      const orig = rawEvents[sp.src];
+      if (!orig) continue;
+      const durationSec = sp.endSec - sp.startSec;
+      keep.push(
+        normalizeEventTimestamps(
+          {
+            ...orig,
+            type: sp.type,
+            startSec: sp.startSec,
+            endSec: sp.endSec,
+            durationSec,
+            startAt: windowStartMs + sp.startSec * 1000,
+            endAt: windowStartMs + sp.endSec * 1000,
+          },
+          windowStartMs,
+        ),
+      );
+    }
+    const ratio = simStore.get().plcMappedRatio;
+    const rngP = makeRng(`${seed}:dense-plc:${density}`);
+    const pieceEvents: MachineEvent[] = [];
+    let pn = 0;
+    for (const sp of dense) {
+      if (sp.type !== "minor_stop" && sp.type !== "speed_loss") continue;
+      pn += 1;
+      const evId = `${plantId}-${machineCode}-EV-D${String(pn).padStart(3, "0")}`;
+      const plcAlarm = sp.type === "minor_stop" && rngP() < ratio ? "Product Sensing Error" : undefined;
+      const order = sp.startSec >= 18000 ? orders[1] : orders[0];
+      const resolved = resolveEventClassification(sp.type, plcAlarm, evId, pn);
+      const durationSec = sp.endSec - sp.startSec;
+      pieceEvents.push(
+        normalizeEventTimestamps(
+          {
+            id: evId,
+            machineCode,
+            startSec: sp.startSec,
+            endSec: sp.endSec,
+            durationSec,
+            startAt: windowStartMs + sp.startSec * 1000,
+            endAt: windowStartMs + sp.endSec * 1000,
+            type: sp.type,
+            ...(sp.speedPct !== undefined ? { speedPct: sp.speedPct } : {}),
+            ...(plcAlarm !== undefined ? { plcAlarm } : {}),
+            orderId: order?.id || "",
+            sku: order?.sku || "",
+            productName: order?.productName || "",
+            source: resolved.source,
+            isTagged: resolved.isTagged,
+            l0Component: resolved.l0Component,
+            l1Parent: resolved.l1Parent,
+            l2CategoryName: resolved.l2CategoryName,
+            l3ReasonName: resolved.l3ReasonName,
+            causes: resolved.causes.map((c) => ({ ...c, durationSec, causeMachineCode: machineCode })),
+          },
+          windowStartMs,
+        ),
+      );
+    }
+    rawEvents.length = 0;
+    rawEvents.push(...keep, ...pieceEvents);
+    rawEvents.sort((a, b) => a.startSec - b.startSec);
+  }
+
   // Ongoing stop if currently near active time in live mode
   if (revealSec < SHIFT_SECONDS && revealSec > 1800) {
     const ongoingStart = isMachineDown
@@ -743,7 +841,17 @@ export function getShiftTimeline(
   }
 
   // 2b. Negative Speed Loss events (classifiable per CR 2) in the free gaps
-  injectNslEvents(rawEvents, seed, { plantId, machineCode, windowStartMs, orders });
+  injectNslEvents(
+    rawEvents,
+    seed,
+    { plantId, machineCode, windowStartMs, orders },
+    nslFixed
+      ? {
+          plan: nslFixed,
+          limitSec: rawEvents.find((e) => e.isOngoing)?.startSec ?? SHIFT_SECONDS,
+        }
+      : undefined,
+  );
 
   // 3. Filter active events for current timeline
   const activeEvents = rawEvents

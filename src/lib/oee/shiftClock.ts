@@ -7,6 +7,8 @@
  * - Shift C: 23:00:00 - 06:59:59 WIB (next day)
  */
 
+import { simStore } from "./simStore";
+
 export type ShiftCode = "A" | "B" | "C";
 
 export const SHIFT_SECONDS = 8 * 3600; // 28,800 seconds
@@ -31,51 +33,29 @@ export interface ShiftInfo {
 // All shift, reminder and window-engine code paths read "now" from here. A demo offset (kept in
 // sessionStorage, so it is per tab and gone when the tab closes) shifts the clock without
 // stopping it; production behaviour is unchanged when no offset is set.
-const DEMO_OFFSET_KEY = "fro_demo_clock_offset_ms";
-let demoOffsetMs: number | null = null;
 const clockListeners = new Set<() => void>();
+// Simulated time lives in simStore (offset, time scale, pause); every change notifies clock listeners.
+simStore.subscribe(() => clockListeners.forEach((l) => l()));
 
-function readDemoOffset(): number {
-  if (demoOffsetMs !== null) return demoOffsetMs;
-  let v = 0;
-  if (typeof window !== "undefined") {
-    try {
-      const raw = sessionStorage.getItem(DEMO_OFFSET_KEY);
-      const n = raw === null ? 0 : Number(raw);
-      v = Number.isFinite(n) ? n : 0;
-    } catch {
-      v = 0;
-    }
-  }
-  demoOffsetMs = v;
-  return v;
-}
-
-/** Current epoch milliseconds (demo offset applied). */
+/** Current epoch milliseconds from the central (simulated) clock. */
 export function getNowMs(): number {
-  return Date.now() + readDemoOffset();
+  return simStore.nowMs();
 }
 
-/** Current time as a Date (demo offset applied). Use this instead of new Date(). */
+/** Current time as a Date from the central clock. Use this instead of new Date() / Date.now(). */
 export function getNow(): Date {
   return new Date(getNowMs());
 }
 
+/** Offset of the simulated clock against the real clock (non-zero when scaled or paused). */
 export function getDemoClockOffsetMs(): number {
-  return readDemoOffset();
+  const st = simStore.get();
+  if (st.paused || st.timeScale !== 1) return getNowMs() - Date.now() || 1;
+  return st.timeOffsetMs;
 }
 
 export function setDemoClockOffsetMs(offsetMs: number | null): void {
-  demoOffsetMs = offsetMs ?? 0;
-  if (typeof window !== "undefined") {
-    try {
-      if (offsetMs === null || offsetMs === 0) sessionStorage.removeItem(DEMO_OFFSET_KEY);
-      else sessionStorage.setItem(DEMO_OFFSET_KEY, String(offsetMs));
-    } catch {
-      // ignore: the in-memory offset still applies for this page load
-    }
-  }
-  clockListeners.forEach((l) => l());
+  simStore.setTimeOffsetMs(offsetMs ?? 0);
 }
 
 /** Moves the clock so that it is `minutesBeforeEnd` before the end of the running shift. */
@@ -306,4 +286,30 @@ export function getShiftInfoAt(startSec: number): ShiftInfo {
   const nowSec = Math.floor(getNowMs() / 1000);
   const elapsedSec = Math.min(SHIFT_SECONDS, Math.max(0, nowSec - info.startSec));
   return { ...info, elapsedSec, isCurrent: nowSec >= info.startSec && nowSec < info.endSec };
+}
+
+/** Start (epoch seconds) of the shift with this key ("YYYY-MM-DD:A"), using the current first-shift start. */
+export function getShiftStartSecByKey(shiftKey: string): number {
+  const [dateKey = "", code = "A"] = shiftKey.split(":");
+  const [y = 1970, m = 1, d = 1] = dateKey.split("-").map(Number);
+  const idx = code === "B" ? 1 : code === "C" ? 2 : 0;
+  const startMod = (getShiftStartMinuteOfDay() + idx * 480) % 1440;
+  const ms = Date.UTC(y, m - 1, d, 0, 0, 0, 0) + startMod * 60000 - WIB_OFFSET_MS;
+  return Math.floor(ms / 1000);
+}
+
+/** Shift info for a shift key; elapsed time is measured against the central clock (full for past shifts). */
+export function getShiftInfoByKey(shiftKey: string): ShiftInfo {
+  return getShiftInfoAt(getShiftStartSecByKey(shiftKey));
+}
+
+/**
+ * The shift a page should show: the current shift, or a selected earlier one. For a completed
+ * shift `elapsedSec` is the full shift length, so every consumer uses until = shift end, never "now".
+ */
+export function getViewShiftInfo(selectedStartSec: number | null): ShiftInfo {
+  const cur = getShiftInfo();
+  if (selectedStartSec === null || selectedStartSec === cur.startSec) return cur;
+  const info = getShiftInfoAt(selectedStartSec);
+  return { ...info, elapsedSec: info.isCurrent ? info.elapsedSec : SHIFT_SECONDS };
 }

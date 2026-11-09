@@ -23,6 +23,9 @@ import "@/lib/oee/rejectEditorSelfTest";
 import "@/lib/oee/targetSelfTest";
 import "@/lib/oee/summarizationSelfTest";
 import "@/lib/oee/assetMasterSelfTest";
+import "@/lib/oee/simControls";
+import "@/lib/oee/simSelfTest";
+import { SimDensityConfirm } from "@/components/oee/operator/SimDensityConfirm";
 
 function NotFoundComponent() {
   return (
@@ -168,6 +171,7 @@ function DashboardShell() {
         <RoleRouteGuard />
         <Outlet />
         <Toaster position="bottom-right" richColors closeButton duration={5000} />
+        <SimDensityConfirm />
       </div>
     );
   }
@@ -185,6 +189,7 @@ function DashboardShell() {
         <Outlet />
       </div>
       <Toaster position="bottom-right" richColors closeButton duration={5000} />
+        <SimDensityConfirm />
     </div>
   );
 }

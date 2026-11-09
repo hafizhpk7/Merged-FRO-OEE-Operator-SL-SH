@@ -6,6 +6,7 @@ import { FinishWorkOrderModal } from "./FinishWorkOrderModal";
 import { PauseWorkOrderModal } from "./PauseWorkOrderModal";
 import { workOrderStore, useWorkOrder } from "@/lib/oee/workOrderStore";
 import { useLineOperationalMode } from "@/lib/oee/assetMaster";
+import { useViewShift } from "@/lib/oee/viewShiftStore";
 import { SRR_BLOCKED_TABS } from "@/lib/oee/config";
 import { srrBlockStore } from "@/lib/oee/srrBlockStore";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -44,6 +45,8 @@ export function OperatorHeader({
   const [pauseModalOpen, setPauseModalOpen] = useState(false);
   const shiftKey = getShiftInfo().shiftKey;
   const wo = useWorkOrder(lineId, shiftKey);
+  const viewShift = useViewShift();
+  const viewingPast = viewShift.isPast;
   const opMode = useLineOperationalMode(plantId, lineId);
   const srrMissing = opMode.reason === "srr-line-missing";
   const reasonBlocked = srrMissing && SRR_BLOCKED_TABS.includes("reason");
@@ -207,6 +210,14 @@ export function OperatorHeader({
 
           {/* Pause Work Order (mock, TG-04) and Finish Work Order */}
           <div className="flex items-center gap-2">
+            {viewingPast && (
+              <span
+                data-testid="past-shift-badge"
+                className="rounded-md bg-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700"
+              >
+                Shift selesai: tampilan read-only
+              </span>
+            )}
             {wo.status === "finished" && (
               <span
                 data-testid="wo-finished-badge"
@@ -238,7 +249,7 @@ export function OperatorHeader({
             <Button
               variant="outline"
               data-testid="pause-wo"
-              disabled={wo.status === "finished"}
+              disabled={wo.status === "finished" || viewingPast}
               onClick={() => {
                 if (wo.status === "paused") workOrderStore.resume(lineId, shiftKey);
                 else setPauseModalOpen(true);
@@ -253,7 +264,8 @@ export function OperatorHeader({
               {wo.status === "paused" ? "Resume Work Order" : "Pause Work Order"}
             </Button>
             <Button
-              disabled={wo.status === "finished"}
+              data-testid="finish-wo"
+              disabled={wo.status === "finished" || viewingPast}
               onClick={() => {
                 if (onBeforeFinishWorkOrder) {
                   onBeforeFinishWorkOrder(() => setFinishModalOpen(true));

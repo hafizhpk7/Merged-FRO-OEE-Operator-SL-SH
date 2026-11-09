@@ -107,6 +107,9 @@ function buildSegments(
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
+/** Tiny segments (dense events) keep a minimum visible width; they stay clickable with a tooltip. */
+const MIN_SEGMENT_PX = 5;
+
 export function ProductionTimelineCard({
   timeline,
   onOpenPendingList,
@@ -133,7 +136,10 @@ export function ProductionTimelineCard({
     return Array.from({ length: 8 }, (_, h) => {
       const hourStartSec = h * 3600;
       const isFuture = hourStartSec >= shift.elapsedSec;
-      const hourWindows = windows.slice(h * WINDOWS_PER_HOUR, (h + 1) * WINDOWS_PER_HOUR);
+      // only windows already revealed by the (simulated) clock; a completed shift shows all of them
+      const hourWindows = windows
+        .slice(h * WINDOWS_PER_HOUR, (h + 1) * WINDOWS_PER_HOUR)
+        .filter((w) => w.startSec < shift.elapsedSec);
       return {
         hourIdx: h,
         label: formatTimeWib(shift.startSec + hourStartSec),
@@ -328,7 +334,7 @@ function SegmentCell({
         data-testid="nsl-segment"
         title="Negative Speed Loss (speed gain)"
         aria-label={`Negative Speed Loss (speed gain) ${formatTimeWib(shiftStartSec + startSec)}`}
-        style={{ width: `${widthPct}%` }}
+        style={{ flex: `${Math.max(1, seg.endSec - seg.startSec)} 1 0%`, minWidth: MIN_SEGMENT_PX }}
         className={`h-full shrink-0 cursor-default ${segmentClass(seg)}`}
       />
     );
@@ -340,7 +346,8 @@ function SegmentCell({
         <button
           type="button"
           aria-label={`${KIND_LABEL[seg.kind]} ${formatTimeWib(shiftStartSec + startSec)}`}
-          style={{ width: `${widthPct}%` }}
+          title={`${KIND_LABEL[seg.kind]} ${formatTimeWib(shiftStartSec + startSec)} - ${formatTimeWib(shiftStartSec + endSec)}`}
+          style={{ flex: `${Math.max(1, seg.endSec - seg.startSec)} 1 0%`, minWidth: MIN_SEGMENT_PX }}
           className={`h-full shrink-0 cursor-pointer transition-[filter] hover:brightness-95 focus-visible:outline-2 ${segmentClass(seg)} ${
             open ? "outline-2 -outline-offset-2 outline-foreground/70" : ""
           }`}

@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MOCK_OPERATORS } from "@/lib/oee/rejectConfig";
 import type { RejectCard } from "@/lib/oee/rejectConfigStore";
 import { rejectStore, useRejectStore, type CorrectionChange } from "@/lib/oee/rejectStore";
-import { formatTimeWib, getNowMs, getShiftInfo } from "@/lib/oee/shiftClock";
+import { formatTimeWib, getNowMs, getShiftInfoByKey } from "@/lib/oee/shiftClock";
 import { L2Badge } from "./L2Badge";
 
 type Row = { key: string; minute: number; q: number; del: boolean };
@@ -46,8 +46,8 @@ export function KonfigurasiDetailModal({
   // Re-render when the store changes.
   useRejectStore(plantId, lineId, shiftKey);
 
-  const shift = getShiftInfo();
-  const isCurrentShift = shiftKey === shift.shiftKey;
+  const shift = getShiftInfoByKey(shiftKey);
+  const isCurrentShift = shift.isCurrent;
   const nowSec = Math.floor(getNowMs() / 1000);
   // OP-15: only hours of the selected shift up to the running hour can be corrected
   const currentIdx = isCurrentShift

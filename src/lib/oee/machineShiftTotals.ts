@@ -20,6 +20,7 @@ import { rejectStore } from "./rejectStore";
 import type { MachineTotals } from "./oeeTotals";
 import { makeRng } from "./rng";
 import { getLineLossFactor } from "./calibration";
+import { densifySpans, getMachineDensity, type DenseSpan } from "./eventDensity";
 import { getNowMs } from "./shiftClock";
 
 const closedShiftCache = new Map<string, MachineTotals>();
@@ -85,8 +86,30 @@ function computeClosedShiftTotalsFast(
     events.push(evItem);
   }
 
+  // Event density: same re-layout as getShiftTimeline (same loss windows per type, more events).
+  const density = getMachineDensity(plantId, machineCode);
+  let nslPlans = null as ReturnType<typeof planNslEvents> | null;
+  if (density !== "normal") {
+    const baseSpans: DenseSpan[] = events.map((e) => ({
+      startSec: e.startSec,
+      endSec: e.endSec,
+      type: e.type as DenseSpan["type"],
+      ...(e.speedPct !== undefined ? { speedPct: e.speedPct } : {}),
+    }));
+    nslPlans = planNslEvents(baseSpans, seed);
+    const dense = densifySpans(baseSpans, nslPlans, seed, density);
+    nslPlans = dense
+      .filter((d) => d.type === "nsl")
+      .map((d) => ({ startSec: d.startSec, endSec: d.endSec, durationSec: d.endSec - d.startSec, speedPct: d.speedPct ?? 125 }));
+    events.length = 0;
+    for (const d of dense) {
+      if (d.type === "nsl") continue;
+      events.push({ startSec: d.startSec, endSec: d.endSec, type: d.type as EventType, ...(d.speedPct !== undefined ? { speedPct: d.speedPct } : {}) });
+    }
+  }
+
   // Same Negative Speed Loss schedule as getShiftTimeline (CR 2), planned from the same gaps.
-  for (const plan of planNslEvents(events, seed)) {
+  for (const plan of nslPlans ?? planNslEvents(events, seed)) {
     events.push({
       startSec: plan.startSec,
       endSec: plan.endSec,
@@ -256,7 +279,7 @@ export function getMachineShiftTotals(
   }
 
   const isClosed = !shiftInfo.isCurrent || effectiveUntilMs >= shiftEndMs;
-  const closedKey = `${plantId}:${lineId}:${machineCode}:${shiftInfo.shiftKey}`;
+  const closedKey = `${plantId}:${lineId}:${machineCode}:${shiftInfo.shiftKey}:${getMachineDensity(plantId, machineCode)}`;
 
   if (isClosed && closedShiftCache.has(closedKey)) {
     return closedShiftCache.get(closedKey)!;

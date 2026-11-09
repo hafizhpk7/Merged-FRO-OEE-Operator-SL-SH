@@ -15,7 +15,9 @@ import {
   useClassificationVersion,
   type MachineEvent,
 } from "@/lib/oee/machineEvents";
-import { getShiftInfo, getShiftInfoAt } from "@/lib/oee/shiftClock";
+import { getShiftInfoAt } from "@/lib/oee/shiftClock";
+import { useViewShift } from "@/lib/oee/viewShiftStore";
+import { useSimWindowBucket } from "@/lib/oee/useSimTick";
 import { getLine } from "@/lib/oee/data";
 
 export const Route = createFileRoute("/operator/$plantId/$lineId/reason")({
@@ -66,10 +68,15 @@ function OperatorReasonInner() {
 
   // Selected shift info
   // (CR 4: the reminder can open a shift that has just ended, identified by its start time)
-  const shiftInfo = useMemo(
-    () => (search.shift !== undefined ? getShiftInfoAt(search.shift) : getShiftInfo()),
-    [search.shift],
-  );
+  // A completed shift always shows until its end (view.info.elapsedSec is the full shift); the current
+  // shift grows with the central clock, one sampling window (30 s simulated) at a time.
+  const view = useViewShift();
+  const bucket = useSimWindowBucket();
+  const rawShift = search.shift !== undefined ? getShiftInfoAt(search.shift) : view.info;
+  const elapsedKey = Math.floor(rawShift.elapsedSec / 30) * 30;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const shiftInfo = useMemo(() => ({ ...rawShift, elapsedSec: elapsedKey }), [rawShift.startSec, elapsedKey, bucket]);
+  const isPastShift = !rawShift.isCurrent && rawShift.elapsedSec >= 28800;
 
   // Shift timeline and snapshot for selected machine (re-computed when version changes)
   const timeline = useMemo(() => {

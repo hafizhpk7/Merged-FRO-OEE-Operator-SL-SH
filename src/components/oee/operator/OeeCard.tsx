@@ -11,6 +11,8 @@ import {
 import { Maximize2 } from "lucide-react";
 import { getLine } from "@/lib/oee/data";
 import { computeOperatorCardMetrics } from "@/lib/oee/operatorCardEngine";
+import { useViewShift } from "@/lib/oee/viewShiftStore";
+import { useSimWindowBucket } from "@/lib/oee/useSimTick";
 import { OEE_CARD_FOLLOWS_SRR_SWITCH } from "@/lib/oee/config";
 import { useSrrMode } from "@/lib/oee/srrStore";
 
@@ -34,9 +36,13 @@ export function OeeCard({
     getLine(plantId, "A", lineId) || getLine(plantId, "B", lineId) || getLine(plantId, "C", lineId);
   const machines = lineObj?.machines || [];
 
+  // Current shift: recomputed every sampling window (30 s simulated); completed shift: until its end.
+  const view = useViewShift();
+  const bucket = useSimWindowBucket();
   const { lineMetrics, machineMetrics } = useMemo(
-    () => computeOperatorCardMetrics(plantId, lineId, skuOn),
-    [plantId, lineId, skuOn],
+    () => computeOperatorCardMetrics(plantId, lineId, skuOn, undefined, view.isPast ? view.info.startSec : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [plantId, lineId, skuOn, view.isPast ? 0 : bucket, view.info.startSec],
   );
 
   const formatPct = (val: number) => `${val.toFixed(2)}%`;

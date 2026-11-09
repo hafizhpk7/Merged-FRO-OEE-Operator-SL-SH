@@ -9,7 +9,7 @@
 import { getShiftTimeline, getMachineProfile } from "./machineEvents";
 import { getLineOperationalMode, getLineSrr, getMachineStandard, getRepresentativeAsset } from "./assetMaster";
 import { getShiftPoPlan, type ShiftPoPlan } from "./poMaster";
-import { getNowMs, getShiftInfo, SHIFT_SECONDS, type ShiftInfo } from "./shiftClock";
+import { getNowMs, getShiftInfo, getShiftInfoAt, SHIFT_SECONDS, type ShiftInfo } from "./shiftClock";
 import {
   computeHourly,
   computeTargets,
@@ -44,11 +44,19 @@ export function getTargetSnapshot(
   lineId: string,
   mode: SrrMode,
   nowMs: number = getNowMs(),
+  /** Start (epoch s) of the selected shift; a completed shift is computed until its end, never "now". */
+  viewStartSec?: number | null,
 ): TargetSnapshot {
-  const shift = getShiftInfo(new Date(nowMs));
+  const nowShift = getShiftInfo(new Date(nowMs));
+  const past = viewStartSec != null && viewStartSec !== nowShift.startSec && viewStartSec < nowShift.startSec;
+  const shift = past ? getShiftInfoAt(viewStartSec as number) : nowShift;
   const wo = workOrderStore.get(lineId, shift.shiftKey);
   const finishedMs = wo.status === "finished" && wo.finishedAtSec ? wo.finishedAtSec * 1000 : null;
-  const effectiveMs = finishedMs !== null ? Math.min(nowMs, finishedMs) : nowMs;
+  const effectiveMs = past
+    ? shift.endSec * 1000
+    : finishedMs !== null
+      ? Math.min(nowMs, finishedMs)
+      : nowMs;
   const bucket = Math.floor(effectiveMs / (TARGET_WINDOW_SEC * 1000)); // refresh every 30 s window (TG-07)
   const cacheKey = `${plantId}:${lineId}:${mode}:${shift.shiftKey}:${bucket}:${shift.startSec}:${finishedMs !== null}:${getLineSrr(plantId, lineId)}`;
   const hit = cache.get(cacheKey);
@@ -90,7 +98,7 @@ export function getTargetSnapshot(
     windows,
     grossOutput: result.shift.actual,
     nowSec: revealedSec,
-    frozen: finishedMs !== null,
+    frozen: past || finishedMs !== null,
   };
   cache.set(cacheKey, snap);
   if (cache.size > 12) cache.delete(cache.keys().next().value as string);

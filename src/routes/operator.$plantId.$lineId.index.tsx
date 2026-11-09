@@ -4,7 +4,7 @@ import { OperatorSelectors } from "@/components/oee/operator/OperatorSelectors";
 import { OperatorDashboardContent } from "@/components/oee/operator/OperatorDashboardContent";
 import { ShiftReminderHost } from "@/components/oee/operator/ShiftReminderHost";
 import { SrrSwitch } from "@/components/oee/operator/SrrSwitch";
-import { getShiftInfo } from "@/lib/oee/shiftClock";
+import { useViewShift } from "@/lib/oee/viewShiftStore";
 import { useLineOperationalMode } from "@/lib/oee/assetMaster";
 
 export const Route = createFileRoute("/operator/$plantId/$lineId/")({
@@ -14,7 +14,8 @@ export const Route = createFileRoute("/operator/$plantId/$lineId/")({
 function OperatorDashboardPage() {
   const { plantId, lineId } = Route.useParams();
   // Real shift key (same as the OEE engines and the Reject page) so reject totals agree.
-  const shiftKey = getShiftInfo().shiftKey;
+  const view = useViewShift();
+  const shiftKey = view.info.shiftKey;
   const srrMissing = useLineOperationalMode(plantId, lineId).reason === "srr-line-missing";
 
   return (
@@ -26,7 +27,7 @@ function OperatorDashboardPage() {
           extra={srrMissing ? undefined : <SrrSwitch plantId={plantId} lineId={lineId} />}
         />
         <OperatorDashboardContent plantId={plantId} lineId={lineId} shiftKey={shiftKey} />
-        {!srrMissing && <ShiftReminderHost plantId={plantId} lineId={lineId} />}
+        {!srrMissing && !view.isPast && <ShiftReminderHost plantId={plantId} lineId={lineId} />}
       </div>
     </OperatorShell>
   );

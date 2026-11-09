@@ -1,3 +1,4 @@
+import { getNow, getNowMs } from "@/lib/oee/shiftClock";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,10 +49,10 @@ export function IdwBlock({
     toast.success(`Printed (mock): ${labelName}`);
     setCountLogs((prev) => [
       {
-        id: `log-${Date.now()}`,
+        id: `log-${getNowMs()}`,
         type: "KARBOX",
         count: currentCarton,
-        at: new Date().toLocaleTimeString(),
+        at: getNow().toLocaleTimeString(),
       },
       ...prev,
     ]);
