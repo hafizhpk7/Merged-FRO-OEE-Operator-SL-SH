@@ -18,12 +18,13 @@ import {
 import { computeLineOee } from "./lineOee";
 import { rejectStore } from "./rejectStore";
 import { getLineLossFactor } from "./calibration";
+import { getNowMs } from "./shiftClock";
 
 export function computeOperatorCardMetrics(
   plantId: string,
   lineId: string,
   skuOn: boolean,
-  nowMs: number = Date.now(),
+  nowMs: number = getNowMs(),
 ): { lineMetrics: OeeMetrics; machineMetrics: Record<string, OeeMetrics>; bottleneck: string } {
   const lineObj =
     getLine(plantId, "A", lineId) || getLine(plantId, "B", lineId) || getLine(plantId, "C", lineId);

@@ -41,6 +41,7 @@ import {
 import { computeLineOeeFromTotals, type MachineTotalsInput } from "./lineOee";
 import { rejectStore } from "./rejectStore";
 import { SHIFT_SECONDS } from "./shiftClock";
+import { getNowMs } from "./shiftClock";
 
 /** Live tick interval in milliseconds for dashboard telemetry */
 export const LIVE_TICK_MS = 5000;
@@ -155,7 +156,7 @@ export function getActivePO(plantId: string, lineId: string): ActivePOInfo | nul
 
   const totalMPQ = 22000;
   if (!poProgressState[key]) {
-    poProgressState[key] = { currentOutput: 12450, lastTick: Date.now() };
+    poProgressState[key] = { currentOutput: 12450, lastTick: getNowMs() };
   }
 
   const state = poProgressState[key]!;
@@ -172,7 +173,7 @@ function advancePoProgress() {
     const state = poProgressState[key];
     if (state) {
       state.currentOutput += 3;
-      state.lastTick = Date.now();
+      state.lastTick = getNowMs();
     }
   }
 }
@@ -325,7 +326,7 @@ export function getMachinePeriodTotals(
   startMs: number,
   endMs: number,
 ): MachineTotals {
-  const nowMs = Date.now();
+  const nowMs = getNowMs();
   const nowFloor30s = Math.floor(nowMs / 30000) * 30000;
   const effectiveEndMs = Math.min(endMs, nowFloor30s);
 
@@ -570,7 +571,7 @@ export function getMetrics(
 ): EntityMetrics {
   const resolved = typeof period === "string" ? resolvePeriod(period) : period;
   const isPastClosed = resolved.isPastClosed;
-  const nowMs = Date.now();
+  const nowMs = getNowMs();
   const nowFloor30s = Math.floor(nowMs / 30000) * 30000;
 
   const startMs = resolved.start.getTime();

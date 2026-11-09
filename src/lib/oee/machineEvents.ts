@@ -356,6 +356,25 @@ const SAMPLE_PRECLASSIFIED_REASONS = [
   },
 ];
 
+/** Uncommented windows per classifiable type: the number shown on the Reason chips (CR 2/CR 4). */
+export function countUncommentedByType(
+  events: MachineEvent[],
+): Record<"downtime" | "minor_stop" | "speed_loss" | "negative_speed_loss", number> {
+  const out = { downtime: 0, minor_stop: 0, speed_loss: 0, negative_speed_loss: 0 };
+  for (const e of events) {
+    if (
+      !e.isTagged &&
+      (e.type === "downtime" ||
+        e.type === "minor_stop" ||
+        e.type === "speed_loss" ||
+        e.type === "negative_speed_loss")
+    ) {
+      out[e.type] += 1;
+    }
+  }
+  return out;
+}
+
 /** Key used by reasonTagStore for the causes an operator committed against one event. */
 export function operatorCauseKey(shiftKey: string, machineCode: string, eventId: string): string {
   return `${shiftKey}:${machineCode}:${eventId}`;
@@ -496,6 +515,12 @@ export function getShiftTimeline(
   liveNowSec?: number,
   plantId: string = "J2",
   periodKey: PeriodKey = "this-shift",
+  /**
+   * Line the machine is viewed on. Machine codes repeat across lines (e.g. LBF on BOP01 and BOP16),
+   * so the reject total must be read for the viewed line. Used for the reject lookup only; the
+   * event pattern keeps deriving from the machine code as before.
+   */
+  viewLineId?: string,
 ): ShiftTimelineResult {
   const profile = getMachineProfile(machineCode);
   const shiftKey = shift.shiftKey;
@@ -870,7 +895,7 @@ export function getShiftTimeline(
 
   let reject = 0;
   let rework = 0;
-  const storeTotals = rejectStore.getTotals(plantId, lineId, shiftKey, machineCode);
+  const storeTotals = rejectStore.getTotals(plantId, viewLineId ?? lineId, shiftKey, machineCode);
   if (storeTotals.totalReject > 0 || storeTotals.totalRework > 0) {
     reject = storeTotals.totalReject;
     rework = storeTotals.totalRework;

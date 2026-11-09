@@ -25,6 +25,7 @@ import { getShiftInfo, SHIFT_SECONDS } from "./shiftClock";
 import { computeOperatorCardMetrics } from "./operatorCardEngine";
 import { getEngineTrendSeries } from "./trendEngine";
 import { getEngineLossTree } from "./lossTreeEngine";
+import { getNowMs } from "./shiftClock";
 
 export const DEBUG_PARITY = true;
 
@@ -271,7 +272,7 @@ export function runParityAudit(): ParityMismatch[] {
       const slshMetrics = getMetrics("J2", "machine", mCode, "this-shift");
 
       // Operator page computation from machine windows
-      const nowMs = Date.now();
+      const nowMs = getNowMs();
       const nowFloor30s = Math.floor(nowMs / 30000) * 30000;
       const shiftStartMs = shiftInfo.startSec * 1000;
       const elapsedSec = Math.min(
@@ -422,7 +423,7 @@ export function runParityAudit(): ParityMismatch[] {
     const items = zoneA.lines.flatMap((l) =>
       l.machines.map((m) => {
         const mCode = m.code || m.id;
-        const nowMs = Date.now();
+        const nowMs = getNowMs();
         const nowFloor30s = Math.floor(nowMs / 30000) * 30000;
         const totals = getMachineShiftTotals(
           "J2",

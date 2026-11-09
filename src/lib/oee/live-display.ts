@@ -6,6 +6,7 @@ import { rand } from "./rng";
 import type { Status } from "./config";
 import { useApp } from "./app-context";
 import { getLineBottleneck, getMetrics, type EntityMetrics } from "./metrics-engine";
+import { getNow } from "./shiftClock";
 
 export type LiveMetrics = {
   availability: number;
@@ -36,10 +37,10 @@ export function useLiveClock(period?: PeriodId | string): string | null {
   useEffect(() => {
     let isMounted = true;
     setMounted(true);
-    setNow(new Date());
+    setNow(getNow());
     const timer = window.setInterval(() => {
       if (isMounted) {
-        setNow(new Date());
+        setNow(getNow());
       }
     }, 1_000);
     return () => {

@@ -5,6 +5,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { getShiftInfo, getPreviousShiftInfo, getWibNow, SHIFT_SECONDS } from "./shiftClock";
+import { getNow } from "./shiftClock";
 
 export type PeriodKey = "this-shift" | "today" | "this-week" | "this-month" | "custom";
 
@@ -116,7 +117,7 @@ export function formatCustomPeriodLabel(start: Date, end: Date, isWholeDay: bool
  */
 export function resolvePeriod(
   periodKey: PeriodKey = "this-shift",
-  now: Date = new Date(),
+  now: Date = getNow(),
   shiftConfig?: ShiftDefinition[],
   customRange?: CustomRangeConfig | null,
 ): ResolvedPeriod {
@@ -458,12 +459,12 @@ export function PeriodProvider({ children }: { children: ReactNode }) {
     return null;
   });
 
-  const [now, setNow] = useState<Date>(() => new Date());
+  const [now, setNow] = useState<Date>(() => getNow());
 
   // Period clock tick every minute to advance current shift window
   useEffect(() => {
     const interval = setInterval(() => {
-      setNow(new Date());
+      setNow(getNow());
     }, 60000);
     return () => clearInterval(interval);
   }, []);

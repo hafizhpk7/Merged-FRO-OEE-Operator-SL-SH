@@ -42,6 +42,7 @@ import {
   type ShiftInfo,
 } from "@/lib/oee/shiftClock";
 import { cn } from "@/lib/utils";
+import { getNow } from "@/lib/oee/shiftClock";
 
 // Memoized 3D Machine Viewer to prevent Three.js scene remounting during 2s data ticks (§8)
 const MemoizedMachineView3D = memo(MachineView3D);
@@ -88,7 +89,7 @@ function MachineDetail() {
   // Determine active shift configuration based on period
   const shiftInfo = useMemo(() => {
     void tick;
-    return getShiftInfo(new Date());
+    return getShiftInfo(getNow());
   }, [tick]);
 
   // Unified Shift Timeline (Single Source of Truth)

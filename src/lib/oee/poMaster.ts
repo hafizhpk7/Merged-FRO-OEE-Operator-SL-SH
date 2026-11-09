@@ -1,4 +1,5 @@
-/**
+
+import { getNow } from "./shiftClock";/**
  * Process Order (PO) Master Data per Line (§3.1)
  */
 
@@ -29,7 +30,7 @@ const DEFAULT_PO: ProcessOrderInfo = {
   unitsPerInnerBox: 12,
   unitsPerCartonBox: 220,
   unitsPerPallet: 13,
-  startTimeSec: Math.floor(new Date().setHours(7, 0, 0, 0) / 1000),
+  startTimeSec: Math.floor(getNow().setHours(7, 0, 0, 0) / 1000),
   operators: ["FTRI", "ADQI", "YUAB", "JRWO", "GSTI", "INDH", "BRHN", "ANDI", "ICAK"],
   activeOperator: "FTRI",
 };

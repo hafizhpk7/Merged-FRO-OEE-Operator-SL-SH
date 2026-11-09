@@ -42,12 +42,13 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PeriodDropdown } from "./period-dropdown";
 import { KpiDelta } from "./kpi-delta";
+import { getNow } from "@/lib/oee/shiftClock";
 
 export const LiveClockChip = memo(function LiveClockChip() {
-  const [now, setNow] = useState<Date>(() => new Date());
+  const [now, setNow] = useState<Date>(() => getNow());
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
+    const timer = setInterval(() => setNow(getNow()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -108,12 +109,12 @@ function formatSecondsAgo(s: number): string {
 
 export const DataUpdatedIndicator = memo(function DataUpdatedIndicator() {
   const tick = useLiveTick();
-  const [lastTickTime, setLastTickTime] = useState<Date>(() => new Date());
+  const [lastTickTime, setLastTickTime] = useState<Date>(() => getNow());
   const [secondsAgo, setSecondsAgo] = useState(0);
   const [isFlashing, setIsFlashing] = useState(false);
 
   useEffect(() => {
-    setLastTickTime(new Date());
+    setLastTickTime(getNow());
     setSecondsAgo(0);
     setIsFlashing(true);
     const flashTimer = setTimeout(() => setIsFlashing(false), 900);

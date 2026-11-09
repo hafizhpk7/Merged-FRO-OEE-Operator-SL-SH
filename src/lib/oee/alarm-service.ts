@@ -5,13 +5,14 @@ import { formatTimeWib, getWibNow, getShiftInfo } from "@/lib/oee/shiftClock";
 import { makeRng } from "@/lib/oee/rng";
 import { matchPlcAlarmCode, ALARM_L1_PARENTS } from "@/lib/oee/lossTree";
 import { getShiftTimeline, DOWNTIME_THRESHOLD_SEC } from "@/lib/oee/machineEvents";
+import { getNow, getNowMs } from "@/lib/oee/shiftClock";
 
 /**
  * Evaluates the period context to determine:
  * 1. includesCurrentDay: Whether the period includes the ongoing today (allows live real-time updates)
  * 2. isStrictlyToday: Whether the period spans only today (determines time-only vs date+time formatting)
  */
-export function getPeriodAlarmContext(resolved: ResolvedPeriod, now: Date = new Date()) {
+export function getPeriodAlarmContext(resolved: ResolvedPeriod, now: Date = getNow()) {
   const wibNow = getWibNow(now);
   // Start of today in WIB: 00:00:00 WIB
   const startOfTodayMs =
@@ -188,7 +189,7 @@ export function generateInitialAlarms({
         includesCurrentDay && i === 0 && (l.status === "down" || l.status === "slow");
       const duration = 12 + Math.floor(rng() * 35);
       const alarmTime = isOccurring
-        ? Date.now() - duration * 60000
+        ? getNowMs() - duration * 60000
         : Math.max(startMs + 60000, endMs - (i + 1) * (3600000 * 2));
 
       // 50% mapped PLC, 50% Non-PLC untagged
@@ -277,7 +278,7 @@ export function useAlarms({
 
     const interval = setInterval(() => {
       setAlarms((prev) => {
-        const now = Date.now();
+        const now = getNowMs();
         let changed = false;
         const updated = prev.map((a) => {
           if (a.status === "OCCURRING" && a.timestamp) {

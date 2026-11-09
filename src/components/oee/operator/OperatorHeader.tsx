@@ -4,6 +4,22 @@ import { CheckCircle2, LayoutGrid, XCircle, ListFilter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FinishWorkOrderModal } from "./FinishWorkOrderModal";
 import { getLine, getPlant } from "@/lib/oee/data";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { REMINDER_TRIGGER_MINUTES } from "@/lib/oee/config";
+import {
+  getDemoClockOffsetMs,
+  jumpToShiftEnd,
+  setDemoClockOffsetMs,
+  subscribeClock,
+} from "@/lib/oee/shiftClock";
+import { getNow } from "@/lib/oee/shiftClock";
 
 export function OperatorHeader({
   plantId,
@@ -19,10 +35,12 @@ export function OperatorHeader({
 
   // Clock state
   const [currentTime, setCurrentTime] = useState("");
+  const [demoOn, setDemoOn] = useState(() => getDemoClockOffsetMs() !== 0);
+  useEffect(() => subscribeClock(() => setDemoOn(getDemoClockOffsetMs() !== 0)), []);
 
   useEffect(() => {
     const updateClock = () => {
-      const now = new Date();
+      const now = getNow();
       // Friday, 6 November 2026 - 08:14:19 WIB
       const dateStr = now.toLocaleDateString("en-GB", {
         weekday: "long",
@@ -55,9 +73,44 @@ export function OperatorHeader({
           </div>
           <div className="flex items-center gap-4">
             <span className="font-mono text-xs">{currentTime}</span>
-            <div className="flex size-7 items-center justify-center rounded-full bg-amber-500 font-semibold text-white text-xs">
-              K
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  data-testid="avatar-menu"
+                  aria-label="Operator menu"
+                  className={`flex size-7 items-center justify-center rounded-full bg-amber-500 font-semibold text-white text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    demoOn ? "ring-2 ring-red-500 ring-offset-1" : ""
+                  }`}
+                >
+                  K
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60">
+                <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Dev / demo clock {demoOn ? "(ON)" : ""}
+                </DropdownMenuLabel>
+                {REMINDER_TRIGGER_MINUTES.map((m) => (
+                  <DropdownMenuItem
+                    key={m}
+                    data-testid={`demo-jump-${m}`}
+                    onSelect={() => jumpToShiftEnd(m)}
+                    className="text-xs"
+                  >
+                    Demo: jump to T-{m}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  data-testid="demo-reset"
+                  disabled={!demoOn}
+                  onSelect={() => setDemoClockOffsetMs(null)}
+                  className="text-xs"
+                >
+                  Reset demo clock
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 

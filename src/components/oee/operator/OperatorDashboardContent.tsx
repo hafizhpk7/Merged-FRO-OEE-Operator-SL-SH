@@ -3,8 +3,8 @@ import { IdwBlock } from "./IdwBlock";
 import { ProcessOrderCard } from "./ProcessOrderCard";
 import { ShiftPerformanceCard } from "./ShiftPerformanceCard";
 import { QaInspectionModal } from "./QaInspectionModal";
-import { ShiftReminderModal } from "./ShiftReminderModal";
-import { isOeeActiveLine, SHIFT_REMINDER_LEAD_MIN } from "@/lib/oee/config";
+import { LegacyShiftReminderModal } from "./LegacyShiftReminderModal";
+import { isOeeActiveLine, LEGACY_SHIFT_REMINDER, SHIFT_REMINDER_LEAD_MIN } from "@/lib/oee/config";
 import { getPoForLine } from "@/lib/oee/poMaster";
 import { getQaIntervalForMpq } from "@/lib/oee/qaConfig";
 import { useRejectStore, rejectStore } from "@/lib/oee/rejectStore";
@@ -68,6 +68,8 @@ export function OperatorDashboardContent({
   const [reminderOpen, setReminderOpen] = useState(false);
 
   useEffect(() => {
+    // CR 4 replaced this pop-up; it only runs when LEGACY_SHIFT_REMINDER is turned on.
+    if (!LEGACY_SHIFT_REMINDER) return;
     // Check if shift is ending within SHIFT_REMINDER_LEAD_MIN (10 min)
     const checkTimer = setInterval(() => {
       const now = new Date();
@@ -136,8 +138,8 @@ export function OperatorDashboardContent({
         onSubmitInspection={handleQaSubmit}
       />
 
-      <ShiftReminderModal
-        open={reminderOpen}
+      <LegacyShiftReminderModal
+        open={LEGACY_SHIFT_REMINDER && reminderOpen}
         onOpenChange={setReminderOpen}
         currentShiftLabel="Shift 3 (23:00 - 09:30)"
         endTime="09:30"

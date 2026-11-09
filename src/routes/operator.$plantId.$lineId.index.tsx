@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { OperatorShell } from "@/components/oee/operator/OperatorShell";
 import { OperatorSelectors } from "@/components/oee/operator/OperatorSelectors";
 import { OperatorDashboardContent } from "@/components/oee/operator/OperatorDashboardContent";
+import { ShiftReminderHost } from "@/components/oee/operator/ShiftReminderHost";
 import { getShiftInfo } from "@/lib/oee/shiftClock";
 
 export const Route = createFileRoute("/operator/$plantId/$lineId/")({
@@ -18,6 +19,7 @@ function OperatorDashboardPage() {
       <div className="space-y-4">
         <OperatorSelectors plantId={plantId} lineId={lineId} />
         <OperatorDashboardContent plantId={plantId} lineId={lineId} shiftKey={shiftKey} />
+        <ShiftReminderHost plantId={plantId} lineId={lineId} />
       </div>
     </OperatorShell>
   );

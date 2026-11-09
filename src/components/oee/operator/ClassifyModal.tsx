@@ -27,7 +27,7 @@ import {
   operatorCauseKey,
   type MachineEvent,
 } from "@/lib/oee/machineEvents";
-import { formatTimeWib, getShiftInfo } from "@/lib/oee/shiftClock";
+import { formatTimeWib, type ShiftInfo } from "@/lib/oee/shiftClock";
 import {
   canAddCause,
   canSaveSingle as canSaveSingleDraft,
@@ -55,10 +55,12 @@ type CatOption = LossCategoryNode & { parent: LossParent };
  * Mount with a fresh `key` per open so the expected versions are captured at open time.
  */
 export function ClassifyModal({
+  shift,
   events,
   open,
   onOpenChange,
 }: {
+  shift: ShiftInfo;
   events: MachineEvent[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -67,7 +69,6 @@ export function ClassifyModal({
   const first = events[0];
   const isGroup = events.length >= 2;
 
-  const shift = getShiftInfo();
   const eventType = ((first?.type ?? "downtime") as ClassifiableType) in REASON_L1_BY_TYPE
     ? ((first?.type ?? "downtime") as ClassifiableType)
     : "downtime";

@@ -26,6 +26,7 @@ import {
 import type { ResolvedPeriod } from "@/lib/oee/period";
 import { MACHINE_OUTPUT_LABEL } from "@/lib/oee/config";
 import { cn } from "@/lib/utils";
+import { getNow } from "@/lib/oee/shiftClock";
 
 export interface MachineEventsProps {
   shift: ShiftInfo;
@@ -69,15 +70,15 @@ export function MachineEvents({
   const [chartWidth, setChartWidth] = useState<number>(800);
 
   // 1. Real-time polling tick every 2 seconds when in LIVE mode
-  const [nowTime, setNowTime] = useState<Date>(() => new Date());
+  const [nowTime, setNowTime] = useState<Date>(() => getNow());
 
   useEffect(() => {
     if (!isLivePeriod) return;
 
-    setNowTime(new Date());
+    setNowTime(getNow());
 
     const interval = setInterval(() => {
-      setNowTime(new Date());
+      setNowTime(getNow());
     }, 2000);
 
     return () => clearInterval(interval);

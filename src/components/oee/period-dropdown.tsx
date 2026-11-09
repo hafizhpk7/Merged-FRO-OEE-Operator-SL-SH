@@ -22,6 +22,7 @@ import {
 } from "@/lib/oee/period";
 import { TimeField } from "./time-field";
 import { cn } from "@/lib/utils";
+import { getNow, getNowMs } from "@/lib/oee/shiftClock";
 
 // Format helper for 2-digit pad
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -52,7 +53,7 @@ export const PeriodDropdown = memo(function PeriodDropdown({ className }: { clas
 
   // Draft state initialized on open or when customRange changes
   const initDrafts = () => {
-    const now = new Date();
+    const now = getNow();
     const defaultStart = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
 
     const sDate = customRange?.startDate ?? defaultStart;
@@ -136,7 +137,7 @@ export const PeriodDropdown = memo(function PeriodDropdown({ className }: { clas
   };
 
   // Validation rules (continuous range)
-  const nowTs = Date.now();
+  const nowTs = getNowMs();
   const startTs = parseDateTime(startDateStr, startTimeStr);
   const endTs = parseDateTime(endDateStr, endTimeStr);
 
@@ -236,7 +237,7 @@ export const PeriodDropdown = memo(function PeriodDropdown({ className }: { clas
       ? resolved.periodLabel
       : (PERIOD_OPTIONS.find((o) => o.key === periodKey)?.label ?? "This Shift");
 
-  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const todayStr = format(getNow(), "yyyy-MM-dd");
 
   return (
     <div className={cn("inline-flex items-center gap-1.5", className)}>

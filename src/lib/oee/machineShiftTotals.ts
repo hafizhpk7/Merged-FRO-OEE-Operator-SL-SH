@@ -20,6 +20,7 @@ import { rejectStore } from "./rejectStore";
 import type { MachineTotals } from "./oeeTotals";
 import { makeRng } from "./rng";
 import { getLineLossFactor } from "./calibration";
+import { getNowMs } from "./shiftClock";
 
 const closedShiftCache = new Map<string, MachineTotals>();
 const currentShiftCache = new Map<string, { bucket: number; totals: MachineTotals }>();
@@ -208,7 +209,7 @@ export function resolveShiftInfoFromStartMs(shiftStartMs: number): ShiftInfo {
   const label = `Shift ${code} · ${String(startHour).padStart(2, "0")}:00-${String(endHour).padStart(2, "0")}:59 WIB`;
   const startSec = Math.floor(shiftStartMs / 1000);
   const endSec = startSec + SHIFT_SECONDS;
-  const nowSec = Math.floor(Date.now() / 1000);
+  const nowSec = Math.floor(getNowMs() / 1000);
   const isCurrent = nowSec >= startSec && nowSec < endSec;
   const elapsedSec = isCurrent
     ? Math.min(SHIFT_SECONDS, Math.max(0, nowSec - startSec))
@@ -246,7 +247,7 @@ export function getMachineShiftTotals(
 ): MachineTotals {
   const shiftInfo = resolveShiftInfoFromStartMs(shiftStartMs);
   const shiftEndMs = shiftStartMs + SHIFT_SECONDS * 1000;
-  const nowMs = Date.now();
+  const nowMs = getNowMs();
   const nowFloor30s = Math.floor(nowMs / 30000) * 30000;
 
   let effectiveUntilMs = Math.min(untilMs, shiftEndMs);

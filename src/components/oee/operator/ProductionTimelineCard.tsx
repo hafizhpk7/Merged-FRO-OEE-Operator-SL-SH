@@ -6,7 +6,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { TIMELINE_COLORS } from "@/lib/oee/reasonConstants";
 import { classifyWindow } from "@/lib/oee/windowEngine";
 import { formatTimeWib } from "@/lib/oee/shiftClock";
-import type { MachineEvent, ShiftTimelineResult, TimelineWindow } from "@/lib/oee/machineEvents";
+import {
+  countUncommentedByType,
+  type MachineEvent,
+  type ShiftTimelineResult,
+  type TimelineWindow,
+} from "@/lib/oee/machineEvents";
 
 type SegKind =
   | "effective"
@@ -114,10 +119,11 @@ export function ProductionTimelineCard({
   const { events, windows, snapshot, shift } = timeline;
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
-  const count = (type: MachineEvent["type"]) => {
-    const list = events.filter((e) => e.type === type);
-    return { total: list.length, pending: list.filter((e) => !e.isTagged).length };
-  };
+  const pendingByType = countUncommentedByType(events);
+  const count = (type: keyof typeof pendingByType) => ({
+    total: events.filter((e) => e.type === type).length,
+    pending: pendingByType[type],
+  });
   const d = count("downtime");
   const ms = count("minor_stop");
   const sl = count("speed_loss");

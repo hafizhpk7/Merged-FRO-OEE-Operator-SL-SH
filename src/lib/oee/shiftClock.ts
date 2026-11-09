@@ -25,6 +25,71 @@ export interface ShiftInfo {
   isCurrent: boolean;
 }
 
+// ---- Central clock (CR 4 demo support) ---------------------------------------------------
+// All shift, reminder and window-engine code paths read "now" from here. A demo offset (kept in
+// sessionStorage, so it is per tab and gone when the tab closes) shifts the clock without
+// stopping it; production behaviour is unchanged when no offset is set.
+const DEMO_OFFSET_KEY = "fro_demo_clock_offset_ms";
+let demoOffsetMs: number | null = null;
+const clockListeners = new Set<() => void>();
+
+function readDemoOffset(): number {
+  if (demoOffsetMs !== null) return demoOffsetMs;
+  let v = 0;
+  if (typeof window !== "undefined") {
+    try {
+      const raw = sessionStorage.getItem(DEMO_OFFSET_KEY);
+      const n = raw === null ? 0 : Number(raw);
+      v = Number.isFinite(n) ? n : 0;
+    } catch {
+      v = 0;
+    }
+  }
+  demoOffsetMs = v;
+  return v;
+}
+
+/** Current epoch milliseconds (demo offset applied). */
+export function getNowMs(): number {
+  return Date.now() + readDemoOffset();
+}
+
+/** Current time as a Date (demo offset applied). Use this instead of new Date(). */
+export function getNow(): Date {
+  return new Date(getNowMs());
+}
+
+export function getDemoClockOffsetMs(): number {
+  return readDemoOffset();
+}
+
+export function setDemoClockOffsetMs(offsetMs: number | null): void {
+  demoOffsetMs = offsetMs ?? 0;
+  if (typeof window !== "undefined") {
+    try {
+      if (offsetMs === null || offsetMs === 0) sessionStorage.removeItem(DEMO_OFFSET_KEY);
+      else sessionStorage.setItem(DEMO_OFFSET_KEY, String(offsetMs));
+    } catch {
+      // ignore: the in-memory offset still applies for this page load
+    }
+  }
+  clockListeners.forEach((l) => l());
+}
+
+/** Moves the clock so that it is `minutesBeforeEnd` before the end of the running shift. */
+export function jumpToShiftEnd(minutesBeforeEnd: number): void {
+  // Reference the real clock so repeated jumps do not stack.
+  const real = new Date(Date.now());
+  const shift = getShiftInfo(real);
+  const target = shift.endSec * 1000 - minutesBeforeEnd * 60000;
+  setDemoClockOffsetMs(target - Date.now());
+}
+
+export function subscribeClock(listener: () => void): () => void {
+  clockListeners.add(listener);
+  return () => clockListeners.delete(listener);
+}
+
 function getWibDate(ms: number) {
   return new Date(ms + WIB_OFFSET_MS);
 }
@@ -32,7 +97,7 @@ function getWibDate(ms: number) {
 /**
  * Gets current WIB date and time components
  */
-export function getWibNow(refDate: Date = new Date()): Date {
+export function getWibNow(refDate: Date = getNow()): Date {
   return getWibDate(refDate.getTime());
 }
 
@@ -107,7 +172,7 @@ export function formatEventDuration(sec: number): string {
 /**
  * Calculates shift info for any given reference timestamp
  */
-export function getShiftInfo(refDate: Date = new Date()): ShiftInfo {
+export function getShiftInfo(refDate: Date = getNow()): ShiftInfo {
   const ms = refDate.getTime();
   const wib = getWibDate(ms);
   const hour = wib.getUTCHours();
@@ -171,9 +236,20 @@ export function getShiftInfo(refDate: Date = new Date()): ShiftInfo {
   };
 }
 
-export function getPreviousShiftInfo(refDate: Date = new Date()): ShiftInfo {
+export function getPreviousShiftInfo(refDate: Date = getNow()): ShiftInfo {
   const current = getShiftInfo(refDate);
   const prevDate = new Date(current.startSec * 1000 - 3600 * 1000);
   const prev = getShiftInfo(prevDate);
   return { ...prev, isCurrent: false, elapsedSec: SHIFT_SECONDS };
+}
+
+/**
+ * Shift that starts at `startSec` (epoch seconds), with elapsed time measured against the
+ * central clock. Used when a page must keep showing a shift that has just ended (reminder T-0).
+ */
+export function getShiftInfoAt(startSec: number): ShiftInfo {
+  const info = getShiftInfo(new Date((startSec + 1) * 1000));
+  const nowSec = Math.floor(getNowMs() / 1000);
+  const elapsedSec = Math.min(SHIFT_SECONDS, Math.max(0, nowSec - info.startSec));
+  return { ...info, elapsedSec, isCurrent: nowSec >= info.startSec && nowSec < info.endSec };
 }

@@ -18,6 +18,7 @@ import {
 } from "./metrics-engine";
 import { resolvePeriod, type PeriodKey, type ResolvedPeriod } from "./period";
 import { SHIFT_SECONDS } from "./shiftClock";
+import { getNowMs } from "./shiftClock";
 
 export type TrendPoint = {
   label: string;
@@ -43,7 +44,7 @@ export function getEngineTrendSeries(
 
   const startMs = resolved.start.getTime();
   const endMs = resolved.end.getTime();
-  const nowMs = Date.now();
+  const nowMs = getNowMs();
   const nowFloor30s = Math.floor(nowMs / 30000) * 30000;
   const effectiveEndMs = Math.min(endMs, nowFloor30s);
   const totalDurationMs = Math.max(1, endMs - startMs);

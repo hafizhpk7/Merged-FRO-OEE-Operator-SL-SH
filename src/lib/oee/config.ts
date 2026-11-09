@@ -223,6 +223,18 @@ export const LINE_TOPOLOGY: Record<string, "SEQ" | "OR"> = {
 
 export const SHIFT_REMINDER_LEAD_MIN = 10;
 
+/** CR 4: the old "End of shift reminder" pop-up (change-shift dropdown, 10 min before end). */
+export const LEGACY_SHIFT_REMINDER = false;
+
+/** CR 4: minutes before the end of the running shift at which the tagging reminder fires. */
+export const REMINDER_TRIGGER_MINUTES: readonly number[] = [60, 30, 20, 10, 0];
+
+/** CR 4: "line" = counts are the sum over all machines of the operator's line. */
+export const REMINDER_SCOPE: "line" | "machine" = "line";
+
+/** CR 4: the T-0 reminder may still show this long after the shift end (shift already rolled over). */
+export const REMINDER_T0_GRACE_MIN = 5;
+
 export const RUN_RATE_THRESHOLDS = {
   redMax: 98,
   yellowMin: 102,
