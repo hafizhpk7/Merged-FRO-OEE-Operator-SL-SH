@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { OperatorShell } from "@/components/oee/operator/OperatorShell";
 import { OperatorSelectors } from "@/components/oee/operator/OperatorSelectors";
 import { OperatorOeeStrip } from "@/components/oee/operator/OperatorOeeStrip";
@@ -12,27 +12,51 @@ import {
   useClassificationVersion,
   type MachineEvent,
 } from "@/lib/oee/machineEvents";
-import { getShiftInfo } from "@/lib/oee/shiftClock";
+import { getShiftInfo, getShiftInfoAt } from "@/lib/oee/shiftClock";
+import { getLine } from "@/lib/oee/data";
 
 export const Route = createFileRoute("/operator/$plantId/$lineId/reason")({
+  // CR 4: "Classify Issue" opens Reason for a given machine and shift (shift = start epoch sec).
+  validateSearch: (search: Record<string, unknown>): { machine?: string; shift?: number } => {
+    const shift = Number(search["shift"]);
+    return {
+      ...(typeof search["machine"] === "string" && search["machine"]
+        ? { machine: search["machine"] }
+        : {}),
+      ...(search["shift"] !== undefined && Number.isFinite(shift) ? { shift } : {}),
+    };
+  },
   component: OperatorReasonPage,
 });
 
 function OperatorReasonPage() {
   const { plantId, lineId } = Route.useParams();
-  const [selectedMachine, setSelectedMachine] = useState("LCM07");
+  const search = Route.useSearch();
+  // Default to the first machine of the line (the old "LCM07" default is not on every line).
+  const line =
+    getLine(plantId, "A", lineId) || getLine(plantId, "B", lineId) || getLine(plantId, "C", lineId);
+  const [selectedMachine, setSelectedMachine] = useState(
+    search.machine ?? line?.machines[0]?.id ?? "LCM07",
+  );
+  useEffect(() => {
+    if (search.machine) setSelectedMachine(search.machine);
+  }, [search.machine]);
 
   // Re-render trigger when tags change
   const version = useClassificationVersion();
   void version;
 
   // Selected shift info
-  const shiftInfo = useMemo(() => getShiftInfo(), []);
+  // (CR 4: the reminder can open a shift that has just ended, identified by its start time)
+  const shiftInfo = useMemo(
+    () => (search.shift !== undefined ? getShiftInfoAt(search.shift) : getShiftInfo()),
+    [search.shift],
+  );
 
   // Shift timeline and snapshot for selected machine (re-computed when version changes)
   const timeline = useMemo(() => {
-    return getShiftTimeline(selectedMachine, shiftInfo, undefined, plantId);
-  }, [selectedMachine, shiftInfo, plantId, version]);
+    return getShiftTimeline(selectedMachine, shiftInfo, undefined, plantId, "this-shift", lineId);
+  }, [selectedMachine, shiftInfo, plantId, lineId, version]);
 
   // Modals state
   const [classifyModalOpen, setClassifyModalOpen] = useState(false);
@@ -114,6 +138,7 @@ function OperatorReasonPage() {
         {/* Classify Modal (single / group) */}
         <ClassifyModal
           key={classifySession}
+          shift={shiftInfo}
           events={classifyEvents}
           open={classifyModalOpen}
           onOpenChange={setClassifyModalOpen}
