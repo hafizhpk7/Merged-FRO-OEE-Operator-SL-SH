@@ -21,7 +21,8 @@ import type { MachineTotals } from "./oeeTotals";
 import { makeRng } from "./rng";
 import { getLineLossFactor } from "./calibration";
 import { densifySpans, getMachineDensity, type DenseSpan } from "./eventDensity";
-import { outputMultiplier, simStore } from "./simStore";
+import { simStore } from "./simStore";
+import { windowOutput } from "./outputOverride";
 import { overlapsAny, trimForInjected } from "./simInject";
 import { getNowMs } from "./shiftClock";
 
@@ -146,7 +147,6 @@ function computeClosedShiftTotalsFast(
 
   for (let w = 0; w < 960; w++) {
     const wMid = w * 30 + 15;
-    const mult = outputMultiplier(shiftInfo.startSec, w * 30);
     while (evIdx < events.length && (events[evIdx]?.endSec ?? 0) <= wMid) {
       evIdx++;
     }
@@ -164,11 +164,9 @@ function computeClosedShiftTotalsFast(
       } else if (ev.type === "speed_loss") {
         runningSec += 30;
         const pct = ev.speedPct ?? 78;
-        const u0 = Math.round((targetPerWindow * pct) / 100);
-        const u = mult !== 1 ? Math.round(u0 * mult) : u0;
+        const u = Math.round((targetPerWindow * pct) / 100);
         units += u;
-        if (u < targetPerWindow) positiveSlSec += ((targetPerWindow - u) * 30) / targetPerWindow;
-        else if (u > targetPerWindow) negativeSlSec += ((u - targetPerWindow) * 30) / targetPerWindow;
+        positiveSlSec += ((targetPerWindow - u) * 30) / targetPerWindow;
       } else if (ev.type === "negative_speed_loss") {
         runningSec += 30;
         const u = Math.round((targetPerWindow * (ev.speedPct ?? 125)) / 100);
@@ -179,7 +177,8 @@ function computeClosedShiftTotalsFast(
       }
     } else {
       runningSec += 30;
-      units += mult !== 1 ? Math.round(targetPerWindow * mult) : Math.round(targetPerWindow);
+      // Effective window: the simulation "Actual vs Target" override may change its output
+      units += Math.round(windowOutput(`${plantId}:${lineId}`, shiftInfo.startSec, machineCode, w, targetPerWindow));
     }
   }
 
@@ -326,7 +325,7 @@ export function getMachineShiftTotals(
   );
   const revealedSec = Math.floor(elapsedSec / 30) * 30;
 
-  const timeline = getShiftTimeline(machineCode, shiftInfo, revealedSec, plantId, "this-shift");
+  const timeline = getShiftTimeline(machineCode, shiftInfo, revealedSec, plantId, "this-shift", lineId);
   const numWindows = Math.floor(revealedSec / 30);
 
   const naSec = 0;
@@ -362,8 +361,9 @@ export function getMachineShiftTotals(
       runningSec += 30;
       units += w.output;
       const target = w.targetOutput > 0 ? w.targetOutput : (profile.idealRatePpm * 30) / 60;
-      if (classifyWindow(w.output, target) === "NSL") {
-        negativeSlSec += ((w.output - target) * 30) / target;
+      const nat = w.naturalOutput ?? w.output; // OEE math ignores the simulation output override
+      if (classifyWindow(nat, target) === "NSL") {
+        negativeSlSec += ((nat - target) * 30) / target;
       }
     }
   }

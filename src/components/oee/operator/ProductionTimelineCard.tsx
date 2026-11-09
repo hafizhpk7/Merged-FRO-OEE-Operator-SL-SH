@@ -73,7 +73,8 @@ function windowKind(w: TimelineWindow): SegKind {
   if (w.type === "minor_stop") return "minor_stop";
   if (w.type === "speed_loss") return "speed_loss";
   if (w.type === "planned") return "planned";
-  return classifyWindow(w.output, w.targetOutput) === "NSL" ? "negative_speed_loss" : "effective";
+  // Negative Speed Loss windows carry an event; an Effective window stays Effective whatever the simulated output
+  return w.eventId && classifyWindow(w.naturalOutput ?? w.output, w.targetOutput) === "NSL" ? "negative_speed_loss" : "effective";
 }
 
 /** Merges consecutive 30 s windows of the same kind/event into contiguous segments. */

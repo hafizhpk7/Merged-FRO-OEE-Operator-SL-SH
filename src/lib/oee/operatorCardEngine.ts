@@ -49,7 +49,7 @@ export function computeOperatorCardMetrics(
 
   const inputs = machines.map((m) => {
     const mCode = m.code || m.id;
-    const timeline = getShiftTimeline(mCode, shiftInfo, revealedSec, plantId, "this-shift");
+    const timeline = getShiftTimeline(mCode, shiftInfo, revealedSec, plantId, "this-shift", lineId);
 
     const stdPpm = skuOn
       ? (getLineSrr(plantId, lineId) ?? getMachineStandard(plantId, lineId, mCode) ?? 0)
@@ -62,7 +62,7 @@ export function computeOperatorCardMetrics(
       else if (w.type === "downtime") status = "D";
       else if (w.type === "minor_stop") status = "MS";
       else if (w.type === "speed_loss") status = "SL";
-      else if (w.type === "run" && w.eventId && classifyWindow(w.output, w.targetOutput) === "NSL")
+      else if (w.type === "run" && w.eventId && classifyWindow(w.naturalOutput ?? w.output, w.targetOutput) === "NSL")
         status = "NSL";
       else status = "EF";
 

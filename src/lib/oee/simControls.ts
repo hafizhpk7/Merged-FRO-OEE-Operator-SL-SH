@@ -24,6 +24,7 @@ import {
 import { viewShiftStore } from "./viewShiftStore";
 import { setSrrLine } from "./assetMaster";
 import { workOrderStore } from "./workOrderStore";
+import { actualVsTargetNow, applyActualVsTarget, clearActualVsTarget } from "./simOutput";
 
 export const SIM_RESET_EVENT = "fro-sim-reset";
 export const SIM_QA_EVENT = "fro-sim-qa-alert";
@@ -238,10 +239,11 @@ export const sim = {
     simStore.setPlcMappedRatio(r);
     simStore.setPlcDowntimeRatio(r);
   },
-  setOutput: (pct: number, mode?: "future" | "whole-shift") => {
-    const shift = getShiftInfo();
-    simStore.setOutput(pct, mode, { shiftStartSec: shift.startSec, fromSec: shift.elapsedSec });
-  },
+  /** "Actual vs Target (%)": total actual = pct x total target (mode "now" = Hit now, "marginal" = From now on). */
+  setActualVsTarget: (plantId: string, lineId: string, pct: number, mode: "now" | "marginal" = "now") =>
+    applyActualVsTarget(plantId, lineId, pct, mode),
+  clearActualVsTarget,
+  actualVsTargetNow,
   setSrrLine,
   injectEvent,
   rejectBurst,

@@ -26,6 +26,7 @@ import "@/lib/oee/assetMasterSelfTest";
 import "@/lib/oee/simControls";
 import "@/lib/oee/simSelfTest";
 import "@/lib/oee/simPanelSelfTest";
+import "@/lib/oee/simOutputSelfTest";
 import { SimDensityConfirm } from "@/components/oee/operator/SimDensityConfirm";
 
 function NotFoundComponent() {

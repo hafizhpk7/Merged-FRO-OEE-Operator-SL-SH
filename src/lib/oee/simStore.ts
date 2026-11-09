@@ -8,7 +8,8 @@
 export type Density = "normal" | "high" | "extreme";
 export type TimeScale = 1 | 5 | 30 | 60 | 300;
 export const TIME_SCALES: readonly TimeScale[] = [1, 5, 30, 60, 300];
-export type OutputApplyMode = "future" | "whole-shift";
+/** "now" = Hit now (retro: cumulative actual = pct x target at apply time); "marginal" = From now on. */
+export type OutputApplyMode = "now" | "marginal";
 
 /** An event injected for a machine at a simulated time (demo control). */
 export type InjectedEvent = {
@@ -22,8 +23,23 @@ export type InjectedEvent = {
   speedPct?: number;
 };
 
-/** Output factor rule: windows of a shift from `fromSec` on use `pct` (the latest matching rule wins). */
-export type OutputRule = { shiftStartSec: number; fromSec: number; pct: number };
+/**
+ * One applied "Actual vs Target" override of a line in a shift. Windows before `appliedIdx` belong to
+ * the apply moment (retro: exact integer outputs of the bottleneck machine in `fixed`, factor
+ * `kPast` for the other machines); windows from `appliedIdx` on use `kAfter`.
+ */
+export type OutputOverrideSeg = {
+  lineKey: string; // "<plant>:<line>"
+  shiftStartSec: number;
+  mode: OutputApplyMode;
+  pct: number;
+  appliedIdx: number;
+  machine: string;
+  fixed: Record<number, number>;
+  kPast: number;
+  kAfter: number;
+  notice?: string;
+};
 
 export type PoPreset = "single" | "three-sku" | "continued";
 
@@ -32,9 +48,11 @@ export type SimState = {
   timeOffsetMs: number;
   timeScale: TimeScale;
   paused: boolean;
-  /** Output factor in percent (100 = as generated). Stored here; the simulation panel applies it. */
+  /** Requested "Actual vs Target" in percent (slider value). */
   outputPct: number;
   outputApplyMode: OutputApplyMode;
+  /** true = natural output, no override (slider disabled). */
+  outputNatural: boolean;
   /** null = per-line default (EVENT_DENSITY in config). */
   density: Density | null;
   /** Share of alarms that are PLC-mapped (0..1). */
@@ -43,8 +61,8 @@ export type SimState = {
   srrOverrides: Record<string, number | null>;
   /** "<PO number>" -> SRR SKU override (null = forced missing). */
   srrSkuOverrides: Record<string, number | null>;
-  /** Output factor history (see OutputRule); `outputPct` is the value shown on the slider. */
-  outputRules: OutputRule[];
+  /** Applied "Actual vs Target" overrides (see OutputOverrideSeg). */
+  outputOverrides: OutputOverrideSeg[];
   injected: InjectedEvent[];
   /** null = the line's PO master; "continued" = the PO carries output from the previous shift. */
   poPreset: PoPreset | null;
@@ -82,12 +100,13 @@ function fresh(): SimState {
     timeScale: 1,
     paused: false,
     outputPct: 100,
-    outputApplyMode: "future",
+    outputApplyMode: "now",
+    outputNatural: true,
     density: null,
     plcMappedRatio: 0.5,
     srrOverrides: srr,
     srrSkuOverrides: {},
-    outputRules: [],
+    outputOverrides: [],
     injected: [],
     poPreset: null,
     plcDowntimeRatio: null,
@@ -195,22 +214,26 @@ export const simStore = {
     dataVer += 1;
     commit({ ...load(), plcDowntimeRatio: ratio === null ? null : Math.max(0, Math.min(1, ratio)) });
   },
-  /**
-   * Output vs target (%). "future": windows from `ctx.fromSec` (seconds from the shift start, the
-   * current simulated time) on; "whole-shift": every window of the shift.
-   */
-  setOutput(pct: number, mode?: OutputApplyMode, ctx?: { shiftStartSec: number; fromSec: number }) {
+  /** Slider value, apply mode and the Natural toggle (UI state of the panel). */
+  setOutputUi(ui: { pct?: number; mode?: OutputApplyMode; natural?: boolean }) {
     const s = load();
-    const m = mode ?? s.outputApplyMode;
-    let rules = s.outputRules;
-    if (ctx) {
-      const fromSec = m === "whole-shift" ? 0 : Math.max(0, Math.floor(ctx.fromSec / 30) * 30);
-      rules = [...rules.filter((r) => !(r.shiftStartSec === ctx.shiftStartSec && r.fromSec >= fromSec)), { shiftStartSec: ctx.shiftStartSec, fromSec, pct }];
-      // keep only the newest rules of the newest shifts
-      rules = rules.slice(-60);
-    }
+    commit({
+      ...s,
+      outputPct: ui.pct ?? s.outputPct,
+      outputApplyMode: ui.mode ?? s.outputApplyMode,
+      outputNatural: ui.natural ?? s.outputNatural,
+    });
+  },
+  /** Replaces the overrides of one line and shift (an empty list restores the natural output). */
+  setOutputOverrides(lineKey: string, shiftStartSec: number, segs: OutputOverrideSeg[]) {
+    const s = load();
+    const kept = s.outputOverrides.filter((o) => !(o.lineKey === lineKey && o.shiftStartSec === shiftStartSec));
     dataVer += 1;
-    commit({ ...s, outputPct: Math.max(0, pct), outputApplyMode: m, outputRules: rules });
+    commit({ ...s, outputOverrides: [...kept, ...segs].slice(-40) });
+  },
+  clearOutputOverrides() {
+    dataVer += 1;
+    commit({ ...load(), outputOverrides: [], outputNatural: true, outputPct: 100 });
   },
   setSrrOverride(key: string, value: number | null | undefined) {
     const s = load();
@@ -267,8 +290,7 @@ export const simStore = {
       Math.abs(s.timeOffsetMs) > 1000 ||
       s.density !== null ||
       s.plcDowntimeRatio !== null ||
-      s.outputRules.some((r) => r.pct !== 100) ||
-      s.outputPct !== 100 ||
+      s.outputOverrides.length > 0 ||
       Object.keys(s.srrOverrides).length > 0 ||
       Object.keys(s.srrSkuOverrides).length > 0 ||
       s.injected.length > 0 ||
@@ -276,11 +298,3 @@ export const simStore = {
     );
   },
 };
-
-/** Output multiplier (1 = as generated) of the window starting `wStartSec` seconds into the shift. */
-export function outputMultiplier(shiftStartSec: number, wStartSec: number): number {
-  const rules = simStore.get().outputRules;
-  let pct = 100;
-  for (const r of rules) if (r.shiftStartSec === shiftStartSec && r.fromSec <= wStartSec) pct = r.pct;
-  return pct / 100;
-}

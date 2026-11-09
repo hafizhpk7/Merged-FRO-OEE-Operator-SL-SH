@@ -11,6 +11,7 @@ import { getLineOperationalMode, getLineSrr, getMachineStandard, getRepresentati
 import { getShiftPoPlan, type ShiftPoPlan } from "./poMaster";
 import { getNowMs, getShiftInfo, getShiftInfoAt, SHIFT_SECONDS, type ShiftInfo } from "./shiftClock";
 import { simStore } from "./simStore";
+import { isOutputSuspended } from "./outputOverride";
 import {
   computeHourly,
   computeTargets,
@@ -59,7 +60,7 @@ export function getTargetSnapshot(
       ? Math.min(nowMs, finishedMs)
       : nowMs;
   const bucket = Math.floor(effectiveMs / (TARGET_WINDOW_SEC * 1000)); // refresh every 30 s window (TG-07)
-  const cacheKey = `${plantId}:${lineId}:${mode}:${shift.shiftKey}:${bucket}:${shift.startSec}:${finishedMs !== null}:${getLineSrr(plantId, lineId)}:${simStore.dataVersion()}`;
+  const cacheKey = `${plantId}:${lineId}:${mode}:${shift.shiftKey}:${bucket}:${shift.startSec}:${finishedMs !== null}:${getLineSrr(plantId, lineId)}:${simStore.dataVersion()}:${isOutputSuspended()}`;
   const hit = cache.get(cacheKey);
   if (hit) return hit;
 

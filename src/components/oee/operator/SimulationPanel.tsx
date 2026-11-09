@@ -22,6 +22,7 @@ import {
 import { simStore, TIME_SCALES, type Density } from "@/lib/oee/simStore";
 import { formatTimeWib, getNowMs, getShiftInfo, SHIFT_SECONDS, WIB_OFFSET_MS } from "@/lib/oee/shiftClock";
 import { setSrrLine, getLineSrr } from "@/lib/oee/assetMaster";
+import { applyActualVsTarget, clearActualVsTarget } from "@/lib/oee/simOutput";
 import { rejectConfigStore } from "@/lib/oee/rejectConfigStore";
 import { REJECT_TYPES } from "@/lib/oee/rejectConfig";
 import { formatGapMin } from "@/lib/oee/targetEngine";
@@ -137,6 +138,8 @@ function PanelBody({ plantId, lineId }: { plantId: string; lineId: string }) {
   // ---- output
   const [outPct, setOutPct] = useState(s.outputPct);
   useEffect(() => setOutPct(s.outputPct), [s.outputPct]);
+  const [outNotice, setOutNotice] = useState("");
+  const ratioNow = r.target > 0 ? (r.actual / r.target) * 100 : null;
 
   // ---- SRR
   const srrLine = getLineSrr(plantId, lineId);
@@ -203,12 +206,30 @@ function PanelBody({ plantId, lineId }: { plantId: string; lineId: string }) {
         </p>
       </fieldset>
 
-      {/* 2. Output + readouts */}
+      {/* 2. Actual vs Target + readouts */}
       <fieldset className={box}>
         <legend className={h}>Output</legend>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            data-testid="sim-natural"
+            checked={s.outputNatural}
+            onChange={(e) => {
+              if (e.target.checked) {
+                clearActualVsTarget(plantId, lineId);
+                setOutNotice("");
+              } else {
+                const r = applyActualVsTarget(plantId, lineId, outPct, s.outputApplyMode);
+                simStore.setOutputUi({ natural: !r.ok });
+                setOutNotice(r.notice ?? "");
+              }
+            }}
+          />
+          <span>Natural (no override)</span>
+        </label>
         <label className="block space-y-1">
           <span className="flex justify-between text-[11px] text-muted-foreground">
-            <span>Output vs target (%)</span>
+            <span>Actual vs Target (%)</span>
             <b data-testid="sim-output-value" className="text-foreground">{outPct}%</b>
           </span>
           <input
@@ -217,32 +238,48 @@ function PanelBody({ plantId, lineId }: { plantId: string; lineId: string }) {
             max={130}
             step={1}
             data-testid="sim-output-slider"
-            aria-label="Output vs target persen"
+            aria-label="Actual vs Target persen"
+            disabled={s.outputNatural}
             value={outPct}
             onChange={(e) => {
               const v = Number(e.target.value);
               setOutPct(v);
-              sim.setOutput(v);
+              const r = applyActualVsTarget(plantId, lineId, v, s.outputApplyMode);
+              setOutNotice(r.notice ?? "");
             }}
-            className="w-full accent-violet-600"
+            className="w-full accent-violet-600 disabled:opacity-40"
           />
         </label>
-        <div className="flex flex-wrap items-center gap-3" role="radiogroup" aria-label="Terapkan output">
+        <div className="flex flex-wrap items-center gap-3" role="radiogroup" aria-label="Mode terapkan">
           {(
             [
-              ["future", "Hanya window berikutnya"],
-              ["whole-shift", "Seluruh shift berjalan"],
+              ["now", "Hit now (retro)"],
+              ["marginal", "From now on (marginal)"],
             ] as const
           ).map(([m, label]) => (
             <label key={m} className="flex items-center gap-1.5">
-              <input type="radio" name="sim-apply" data-testid={`sim-apply-${m}`} checked={s.outputApplyMode === m} onChange={() => sim.setOutput(outPct, m)} />
+              <input
+                type="radio"
+                name="sim-apply"
+                data-testid={`sim-apply-${m}`}
+                disabled={s.outputNatural}
+                checked={s.outputApplyMode === m}
+                onChange={() => {
+                  const r = applyActualVsTarget(plantId, lineId, outPct, m);
+                  setOutNotice(r.notice ?? "");
+                }}
+              />
               {label}
             </label>
           ))}
-          <Button size="sm" variant="ghost" className={btn} data-testid="sim-output-reset" onClick={() => { setOutPct(100); sim.setOutput(100, "whole-shift"); }}>
-            100%
-          </Button>
         </div>
+        <p className="text-[11px] text-muted-foreground" data-testid="sim-avt-now">
+          Actual vs target now: <b className="text-foreground">{ratioNow === null ? "-" : `${ratioNow.toFixed(1)}%`}</b>
+          {s.outputNatural ? " (natural)" : ` (requested ${outPct}%)`}
+        </p>
+        {outNotice && (
+          <p className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800" data-testid="sim-output-notice">{outNotice}</p>
+        )}
         <dl className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-md bg-muted/40 p-2" data-testid="sim-readouts">
           <dt className="text-muted-foreground">TOTAL TARGET OUTPUT</dt>
           <dd className="text-right font-mono font-bold" data-testid="sim-target">{r.target.toLocaleString()} pcs</dd>

@@ -17,7 +17,8 @@ import {
 } from "./simControls";
 import { getShiftPoPlan } from "./poMaster";
 import { getNowMs, getShiftInfo, getShiftInfoAt, SHIFT_SECONDS } from "./shiftClock";
-import { outputMultiplier, simStore } from "./simStore";
+import { simStore } from "./simStore";
+import { applyActualVsTarget, clearActualVsTarget } from "./simOutput";
 import { getTargetSnapshot } from "./targetService";
 import { runTargetSelfTest } from "./targetSelfTest";
 
@@ -49,24 +50,14 @@ export function runSimPanelSelfTest(): { passed: boolean; results: Check[] } {
     check("pause + fixed time makes the snapshot reproducible", JSON.stringify(getTargetSnapshot(PLANT, LINE, "LINE").result.shift) === JSON.stringify(base.result.shift));
     check("clock override counts as simulation active", isSimulationActive());
 
-    // ---- output slider changes only the actual output ---------------------------------------------------
-    simStore.setOutput(80, "whole-shift", { shiftStartSec: sh.startSec, fromSec: sh.elapsedSec });
+    // ---- Actual vs Target changes only the actual output (details: runSimOutputSelfTest) ---------------------
+    const ap = applyActualVsTarget(PLANT, LINE, 80, "now");
     const lo = getTargetSnapshot(PLANT, LINE, "LINE");
-    const ratio = base.result.shift.actual > 0 ? lo.result.shift.actual / base.result.shift.actual : 0;
-    check("output 80%: target unchanged, actual lower", lo.result.shift.target === base.result.shift.target && lo.result.shift.actual < base.result.shift.actual, `${base.result.shift.actual} -> ${lo.result.shift.actual}`);
-    check("output 80%: actual is about 80% of the 100% value", ratio > 0.75 && ratio < 0.86, `ratio ${ratio.toFixed(3)}`);
-    const gapPct = (lo.result.shift.gap / lo.result.shift.target) * 100;
-    const gapPct100 = (base.result.shift.gap / base.result.shift.target) * 100;
-    check("output 80%: gap moves down by about 20% of the actual output", gapPct < gapPct100, `gap ${gapPct100.toFixed(1)}% -> ${gapPct.toFixed(1)}%`);
-    simStore.setOutput(100, "whole-shift", { shiftStartSec: sh.startSec, fromSec: 0 });
+    check("Actual vs Target 80%: target unchanged, actual follows the request", ap.ok && lo.result.shift.target === base.result.shift.target && lo.result.shift.actual !== base.result.shift.actual, `${base.result.shift.actual} -> ${lo.result.shift.actual}`);
+    check("Actual vs Target 80%: actual = 80% of target (+-1 pcs)", Math.abs(lo.result.shift.actual - Math.round(0.8 * lo.result.shift.target)) <= 1);
+    clearActualVsTarget(PLANT, LINE);
     const back = getTargetSnapshot(PLANT, LINE, "LINE");
-    check("output back to 100% restores the original actual", back.result.shift.actual === base.result.shift.actual);
-
-    // future-only mode leaves earlier windows alone
-    simStore.setOutput(60, "future", { shiftStartSec: sh.startSec, fromSec: sh.elapsedSec });
-    const still = getTargetSnapshot(PLANT, LINE, "LINE");
-    check("future-only mode keeps revealed windows unchanged", still.result.shift.actual === base.result.shift.actual);
-    simStore.setOutput(100, "whole-shift", { shiftStartSec: sh.startSec, fromSec: 0 });
+    check("Natural restores the original actual exactly", back.result.shift.actual === base.result.shift.actual);
 
     // ---- SRR: blocked mode and restore ------------------------------------------------------------------------
     setSrrLine(PLANT, LINE, null);
@@ -103,7 +94,10 @@ export function runSimPanelSelfTest(): { passed: boolean; results: Check[] } {
 
     // ---- timeline and closed-shift totals agree with output rules and injected events ----------------------------------
     const past = getShiftInfoAt(sh5.startSec - SHIFT_SECONDS);
-    simStore.setOutput(75, "whole-shift", { shiftStartSec: past.startSec, fromSec: 0 });
+    // an override on a completed shift (built directly): timeline and closed-shift totals must still agree
+    simStore.setOutputOverrides(`${PLANT}:${LINE}`, past.startSec, [
+      { lineKey: `${PLANT}:${LINE}`, shiftStartSec: past.startSec, mode: "marginal", pct: 75, appliedIdx: 0, machine: "", fixed: {}, kPast: 1, kAfter: 0.75 },
+    ]);
     simStore.addInjected({ shiftKey: past.shiftKey, machineCode: m0, type: "downtime", startSec: 3600, durationSec: 1200 });
     simStore.addInjected({ shiftKey: past.shiftKey, machineCode: m0, type: "speed_loss", startSec: 12000, durationSec: 1800, speedPct: 65 });
     clearCurrentShiftCache();
@@ -116,7 +110,7 @@ export function runSimPanelSelfTest(): { passed: boolean; results: Check[] } {
       const fast = getMachineShiftTotals(PLANT, LINE, code, past.startSec * 1000, past.endSec * 1000);
       if (Math.abs(fast.units - units) > 1) {
         parity = false;
-        detailP += `${code}: fast ${fast.units} vs timeline ${units} (w=${t.windows.length}, mults ${[0,5000,20000].map(x=>outputMultiplier(past.startSec,x)).join("/")}); `;
+        detailP += `${code}: fast ${fast.units} vs timeline ${units}; `;
       }
     }
     check("closed-shift totals equal the timeline with output rules and injected events", parity, detailP);
@@ -127,9 +121,9 @@ export function runSimPanelSelfTest(): { passed: boolean; results: Check[] } {
     simStore.setPlcDowntimeRatio(0.4);
     const exported = JSON.parse(JSON.stringify(exportSimState())) as ReturnType<typeof exportSimState>;
     const sig = (e: ReturnType<typeof exportSimState>) =>
-      JSON.stringify([e.state.timeScale, e.state.paused, e.state.density, e.state.plcDowntimeRatio, e.state.outputRules, e.state.srrOverrides, e.state.srrSkuOverrides, e.state.injected, e.state.poPreset, e.shiftStartOverrideMin]);
+      JSON.stringify([e.state.timeScale, e.state.paused, e.state.density, e.state.plcDowntimeRatio, e.state.outputOverrides, e.state.srrOverrides, e.state.srrSkuOverrides, e.state.injected, e.state.poPreset, e.shiftStartOverrideMin]);
     resetOverrides();
-    check("reset returns to live defaults", !isSimulationActive() && simStore.get().injected.length === 0 && simStore.get().outputRules.length === 0);
+    check("reset returns to live defaults", !isSimulationActive() && simStore.get().injected.length === 0 && simStore.get().outputOverrides.length === 0);
     const err = importSimState(exported);
     const re = exportSimState();
     check("import restores the same state", err === null && sig(re) === sig(exported) && Math.abs(re.simNowMs - exported.simNowMs) < 5000, err ?? "");

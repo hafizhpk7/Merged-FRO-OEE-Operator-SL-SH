@@ -34,7 +34,8 @@ import { reasonTagStore } from "./reasonTagStore";
 import { getLineLossFactor } from "./calibration";
 import { getLine } from "./data";
 import { densifySpans, getMachineDensity, type DenseSpan } from "./eventDensity";
-import { outputMultiplier, simStore } from "./simStore";
+import { simStore } from "./simStore";
+import { windowOutput } from "./outputOverride";
 import { overlapsAny, trimForInjected } from "./simInject";
 
 export type EventType =
@@ -106,6 +107,8 @@ export interface TimelineWindow {
   startSec: number;
   endSec: number;
   output: number;
+  /** Output before the simulation "Actual vs Target" override (only set when it differs). */
+  naturalOutput?: number;
   targetOutput: number;
   speedPpm: number;
   type: EventType;
@@ -1039,10 +1042,14 @@ export function getShiftTimeline(
       }
     }
 
-    // Simulation: output vs target (%) scales Effective and Speed Loss windows (not NSL, Minor Stop, Downtime)
-    const mult = outputMultiplier(shift.startSec, wStart);
-    if (mult !== 1 && ((type === "run" && activeEv?.type !== "negative_speed_loss") || type === "speed_loss")) {
-      unitsInWindow = unitsInWindow * mult;
+    // Simulation "Actual vs Target": only Effective windows change (not NSL, Speed Loss, Minor Stop, Downtime)
+    let naturalOutput: number | undefined;
+    if (type === "run" && activeEv?.type !== "negative_speed_loss") {
+      const o = windowOutput(`${plantId}:${viewLineId ?? lineId}`, shift.startSec, machineCode, wIdx, unitsInWindow);
+      if (o !== unitsInWindow) {
+        naturalOutput = Math.round(unitsInWindow);
+        unitsInWindow = o;
+      }
     }
 
     // Accumulate production & rejects
@@ -1067,6 +1074,7 @@ export function getShiftTimeline(
       startSec: wStart,
       endSec: wEnd,
       output: Math.round(unitsInWindow),
+      ...(naturalOutput !== undefined ? { naturalOutput } : {}),
       targetOutput: Math.round(targetUnitsInWindow),
       speedPpm: Math.round(speedPpm),
       type,
@@ -1109,7 +1117,7 @@ export function getShiftTimeline(
                 ? "SL"
                 : w.type === "run" &&
                     w.targetOutput > 0 &&
-                    classifyWindow(w.output, w.targetOutput) === "NSL"
+                    classifyWindow(w.naturalOutput ?? w.output, w.targetOutput) === "NSL"
                   ? "NSL"
                   : "EF",
       ...(w.type === "speed_loss" && w.targetOutput > 0
