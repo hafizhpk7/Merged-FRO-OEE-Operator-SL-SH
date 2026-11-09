@@ -7,7 +7,7 @@
  * Planned Downtime windows of the engine are excluded from scheduled time; D, MS, SL stay in.
  */
 import { getShiftTimeline, getMachineProfile } from "./machineEvents";
-import { getBottleneck, getSkuStandardRunRate } from "./metrics-engine";
+import { getLineOperationalMode, getLineSrr, getMachineStandard, getRepresentativeAsset } from "./assetMaster";
 import { getShiftPoPlan, type ShiftPoPlan } from "./poMaster";
 import { getNowMs, getShiftInfo, SHIFT_SECONDS, type ShiftInfo } from "./shiftClock";
 import {
@@ -50,26 +50,28 @@ export function getTargetSnapshot(
   const finishedMs = wo.status === "finished" && wo.finishedAtSec ? wo.finishedAtSec * 1000 : null;
   const effectiveMs = finishedMs !== null ? Math.min(nowMs, finishedMs) : nowMs;
   const bucket = Math.floor(effectiveMs / (TARGET_WINDOW_SEC * 1000)); // refresh every 30 s window (TG-07)
-  const cacheKey = `${plantId}:${lineId}:${mode}:${shift.shiftKey}:${bucket}:${shift.startSec}:${finishedMs !== null}`;
+  const cacheKey = `${plantId}:${lineId}:${mode}:${shift.shiftKey}:${bucket}:${shift.startSec}:${finishedMs !== null}:${getLineSrr(plantId, lineId)}`;
   const hit = cache.get(cacheKey);
   if (hit) return hit;
 
   const plan = getShiftPoPlan(lineId, shift);
-  const machine = getBottleneck(plantId, lineId);
-  const ideal = Math.max(1, getMachineProfile(machine).idealRatePpm);
-  const srrLine = plan.srrLine ?? getSkuStandardRunRate(plantId, lineId);
+  const machine = getRepresentativeAsset(plantId, lineId);
+  const ideal = Math.max(1, getMachineStandard(plantId, lineId, machine) ?? getMachineProfile(machine).idealRatePpm);
+  const srrLine = plan.srrLine ?? getLineSrr(plantId, lineId);
 
   const elapsed = Math.min(SHIFT_SECONDS, Math.max(0, Math.floor(effectiveMs / 1000) - shift.startSec));
   const revealedSec = Math.floor(elapsed / TARGET_WINDOW_SEC) * TARGET_WINDOW_SEC;
-  const timeline = getShiftTimeline(machine, shift, revealedSec, plantId, "this-shift", lineId);
+  // SRR Line missing: the line runs in IDW-only mode, so no windows are computed at all.
+  const blocked = getLineOperationalMode(plantId, lineId).reason === "srr-line-missing";
+  const timeline = blocked ? null : getShiftTimeline(machine, shift, revealedSec, plantId, "this-shift", lineId);
 
-  const windows: TargetWindow[] = timeline.windows
+  const windows: TargetWindow[] = (timeline?.windows ?? [])
     .slice(0, revealedSec / TARGET_WINDOW_SEC)
     .map((w) => {
       const mid = w.startSec + TARGET_WINDOW_SEC / 2;
       const seg = plan.segments.find((s) => mid >= s.startSec && mid < s.stopSec);
       // the running SKU's own rate scales the machine efficiency into line output; outside a PO there is none
-      const skuRate = seg ? (seg.srr ?? plan.srrLine ?? ideal) : 0;
+      const skuRate = seg ? (seg.srr ?? srrLine ?? ideal) : 0;
       return {
         startSec: w.startSec,
         output: (w.output / (ideal * (TARGET_WINDOW_SEC / 60))) * skuRate * (TARGET_WINDOW_SEC / 60),

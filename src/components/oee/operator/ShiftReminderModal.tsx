@@ -23,7 +23,6 @@ const TYPE_BADGE: Record<string, string> = {
   downtime: "bg-red-500 text-white",
   minor_stop: "bg-purple-600 text-white",
   speed_loss: "bg-amber-500 text-white",
-  negative_speed_loss: "bg-emerald-600 text-white",
 };
 
 /**

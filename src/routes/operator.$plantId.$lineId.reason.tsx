@@ -1,4 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useLineOperationalMode } from "@/lib/oee/assetMaster";
+import { SRR_BLOCKED_TABS } from "@/lib/oee/config";
+import { srrBlockStore } from "@/lib/oee/srrBlockStore";
 import { useEffect, useState, useMemo } from "react";
 import { OperatorShell } from "@/components/oee/operator/OperatorShell";
 import { OperatorSelectors } from "@/components/oee/operator/OperatorSelectors";
@@ -29,7 +32,22 @@ export const Route = createFileRoute("/operator/$plantId/$lineId/reason")({
   component: OperatorReasonPage,
 });
 
+/** SRR Line missing: Reason is blocked (also by direct URL); stay on / go back to the Dashboard with the modal. */
 function OperatorReasonPage() {
+  const { plantId, lineId } = Route.useParams();
+  const navigate = useNavigate();
+  const blocked =
+    useLineOperationalMode(plantId, lineId).reason === "srr-line-missing" && SRR_BLOCKED_TABS.includes("reason");
+  useEffect(() => {
+    if (!blocked) return;
+    srrBlockStore.open();
+    void navigate({ to: "/operator/$plantId/$lineId", params: { plantId, lineId }, replace: true });
+  }, [blocked, plantId, lineId, navigate]);
+  if (blocked) return null;
+  return <OperatorReasonInner />;
+}
+
+function OperatorReasonInner() {
   const { plantId, lineId } = Route.useParams();
   const search = Route.useSearch();
   // Default to the first machine of the line (the old "LCM07" default is not on every line).

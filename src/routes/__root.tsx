@@ -22,6 +22,7 @@ import "@/lib/oee/rejectL2SelfTest";
 import "@/lib/oee/rejectEditorSelfTest";
 import "@/lib/oee/targetSelfTest";
 import "@/lib/oee/summarizationSelfTest";
+import "@/lib/oee/assetMasterSelfTest";
 
 function NotFoundComponent() {
   return (

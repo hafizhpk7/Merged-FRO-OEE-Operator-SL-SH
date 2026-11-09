@@ -110,7 +110,6 @@ export function getReminderCounts(
     downtime: 0,
     minor_stop: 0,
     speed_loss: 0,
-    negative_speed_loss: 0,
   };
   const byMachine: Record<string, number> = {};
   for (const code of codes) {
@@ -119,8 +118,7 @@ export function getReminderCounts(
     byType.downtime += c.downtime;
     byType.minor_stop += c.minor_stop;
     byType.speed_loss += c.speed_loss;
-    byType.negative_speed_loss += c.negative_speed_loss;
-    byMachine[code] = c.downtime + c.minor_stop + c.speed_loss + c.negative_speed_loss;
+    byMachine[code] = c.downtime + c.minor_stop + c.speed_loss;
   }
   const total = Object.values(byType).reduce((a, b) => a + b, 0);
   let topMachine: string | null = null;

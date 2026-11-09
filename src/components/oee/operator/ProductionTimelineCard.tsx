@@ -127,7 +127,6 @@ export function ProductionTimelineCard({
   const d = count("downtime");
   const ms = count("minor_stop");
   const sl = count("speed_loss");
-  const nsl = count("negative_speed_loss");
 
   const rows = useMemo(() => {
     const eventsById = new Map(events.map((e) => [e.id, e]));
@@ -149,13 +148,6 @@ export function ProductionTimelineCard({
     { id: "downtime", letter: "D", label: "Downtime", c: d, badge: "bg-red-500" },
     { id: "minor_stop", letter: "MS", label: "Minor Stop", c: ms, badge: "bg-purple-600" },
     { id: "speed_loss", letter: "SL", label: "Speed Loss", c: sl, badge: "bg-amber-400" },
-    {
-      id: "negative_speed_loss",
-      letter: "NSL",
-      label: "Negative Speed Loss",
-      c: nsl,
-      badge: "bg-emerald-600",
-    },
   ];
 
   const legend: { label: string; cls: string }[] = [
@@ -163,7 +155,6 @@ export function ProductionTimelineCard({
     { label: "Downtime", cls: KIND_SWATCH.downtime },
     { label: "Speed Loss", cls: KIND_SWATCH.speed_loss },
     { label: "Negative Speed Loss", cls: KIND_SWATCH.negative_speed_loss },
-    { label: "No Standard", cls: "bg-slate-400" },
     { label: "Minor Stop", cls: KIND_SWATCH.minor_stop },
     { label: "Planned Downtime", cls: KIND_SWATCH.planned },
     {
@@ -308,10 +299,7 @@ function SegmentCell({
   const ev = seg.event;
   const isLoss =
     !!ev &&
-    (ev.type === "downtime" ||
-      ev.type === "minor_stop" ||
-      ev.type === "speed_loss" ||
-      ev.type === "negative_speed_loss");
+    (ev.type === "downtime" || ev.type === "minor_stop" || ev.type === "speed_loss");
   const startSec = ev ? ev.startSec : seg.startSec;
   const endSec = ev ? ev.endSec : seg.endSec;
   const durationMin = Math.max(1, Math.round((endSec - startSec) / 60));
@@ -331,6 +319,20 @@ function SegmentCell({
   const reject = Math.round((output * rejectRatePct) / 100);
 
   const widthPct = ((seg.endSec - seg.startSec) / 3600) * 100;
+
+  // Negative Speed Loss (speed gain) stays visible but is not clickable and needs no action.
+  if (seg.kind === "negative_speed_loss") {
+    return (
+      <div
+        role="img"
+        data-testid="nsl-segment"
+        title="Negative Speed Loss (speed gain)"
+        aria-label={`Negative Speed Loss (speed gain) ${formatTimeWib(shiftStartSec + startSec)}`}
+        style={{ width: `${widthPct}%` }}
+        className={`h-full shrink-0 cursor-default ${segmentClass(seg)}`}
+      />
+    );
+  }
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>

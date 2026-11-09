@@ -1,4 +1,4 @@
-export const BUILD_ID = "r46 · 09 Nov 2026 WIB · CR1-review";
+export const BUILD_ID = "r47 · 09 Nov 2026 WIB · SRR-master";
 
 export const FEATURES = {
   routeTreeManualSync: true,
@@ -108,6 +108,13 @@ export const FEATURES = {
   cr1ReviewSingleL2PerEntry: true,
   cr1ReviewMasterRejectConfigPage: true,
   cr1ReviewExtraRejectCardRemoved: true,
+  reasonNslNotClassifiable: true,
+  noStandardWindowStatusRemoved: true,
+  assetMasterMock: true,
+  lineOperationalModeSrrMissing: true,
+  srrLineOverrideLayer: true,
+  srrLineMissingHeaderChip: true,
+  assetMasterSelfTest: true,
 };
 
 if (typeof window !== "undefined") {

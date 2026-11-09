@@ -42,7 +42,7 @@ export function SrrSwitch({ plantId, lineId }: { plantId: string; lineId: string
           />
         </button>
         <span className="font-mono text-xs font-bold text-foreground" data-testid="srr-value">
-          {std ? `${std} pcs/min` : "No standard"}
+          {std ? `${std} pcs/min` : "-"}
           {!isLine && cur && std ? (
             <span className="ml-1 font-sans text-[10px] font-semibold text-muted-foreground">
               ({cur.skuLabel})

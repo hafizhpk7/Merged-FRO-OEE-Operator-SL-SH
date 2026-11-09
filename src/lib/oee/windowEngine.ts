@@ -2,7 +2,7 @@
  * OEE Calculation Engine (§2.3 CR, URS pages 24-32)
  */
 
-export type WindowStatus = "NA" | "US" | "EF" | "SL" | "NSL" | "MS" | "D" | "PD" | "NS";
+export type WindowStatus = "NA" | "US" | "EF" | "SL" | "NSL" | "MS" | "D" | "PD";
 
 export type WindowData = {
   index: number;
@@ -43,6 +43,8 @@ export function classifyWindow(
   tolerancePct: number = TOLERANCE_PCT,
 ): WindowStatus {
   if (actual === 0) return "D"; // Or "MS" depending on context, but EF usually requires >0
+  // A missing standard (null/0) has no speed to compare with: never SL or NSL.
+  if (!(stdPerWindow > 0)) return "EF";
   if (actual < stdPerWindow) return "SL";
   if (actual > Math.ceil((stdPerWindow * tolerancePct) / 100)) return "NSL";
   return "EF";

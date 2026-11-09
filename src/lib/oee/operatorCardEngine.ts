@@ -6,8 +6,7 @@
 import { getLine } from "./data";
 import { getShiftInfo, SHIFT_SECONDS } from "./shiftClock";
 import { getShiftTimeline, getMachineProfile } from "./machineEvents";
-import { getBottleneck, getSkuStandardRunRate, getMachineMaxRunRate } from "./metrics-engine";
-import { LINE_TOPOLOGY } from "./config";
+import { getLineOperation, getLineSrr, getMachineStandard, getRepresentativeAsset } from "./assetMaster";
 import {
   classifyWindow,
   computeMachineOee,
@@ -38,8 +37,8 @@ export function computeOperatorCardMetrics(
   );
   const revealedSec = Math.floor(elapsedSec / 30) * 30;
   const numWindows = Math.floor(revealedSec / 30);
-  const bottleneck = getBottleneck(plantId, lineId);
-  const topology = LINE_TOPOLOGY[lineId] ?? "SEQ";
+  const bottleneck = getRepresentativeAsset(plantId, lineId);
+  const topology = getLineOperation(plantId, lineId);
 
   const machineMetrics: Record<string, OeeMetrics> = {};
 
@@ -48,8 +47,8 @@ export function computeOperatorCardMetrics(
     const timeline = getShiftTimeline(mCode, shiftInfo, revealedSec, plantId, "this-shift");
 
     const stdPpm = skuOn
-      ? getSkuStandardRunRate(plantId, lineId)
-      : getMachineMaxRunRate(plantId, mCode);
+      ? (getLineSrr(plantId, lineId) ?? getMachineStandard(plantId, lineId, mCode) ?? 0)
+      : (getMachineStandard(plantId, lineId, mCode) ?? 0);
     const targetCount = (stdPpm * 30) / 60;
 
     const windows: WindowData[] = timeline.windows.slice(0, numWindows).map((w, i) => {

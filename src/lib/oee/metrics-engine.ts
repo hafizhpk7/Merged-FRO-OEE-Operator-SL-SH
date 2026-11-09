@@ -24,7 +24,7 @@ import {
 } from "./data";
 import { J2_LINES_CONFIG } from "./j2-layout-config";
 import { resolvePeriod, type ResolvedPeriod, type PeriodKey } from "./period";
-import { LINE_TOPOLOGY } from "./config";
+import { getLineOperation, getLineSrr, getRepresentativeAsset, REPRESENTATIVE_BY_LINE } from "./assetMaster";
 import { getMachineProfile } from "./machineEvents";
 import {
   computeOeeFromTotals,
@@ -55,40 +55,11 @@ export const PO_IDLE_PLACEHOLDER = "-";
 /**
  * Deterministic Bottleneck configuration by line across all plants.
  */
-export const BOTTLENECK_BY_LINE: Record<string, string> = (() => {
-  const map: Record<string, string> = {};
+export const BOTTLENECK_BY_LINE: Record<string, string> = REPRESENTATIVE_BY_LINE;
 
-  for (const lineCfg of J2_LINES_CONFIG) {
-    const key = `J2:${lineCfg.code}`;
-    const firstMachine = lineCfg.machines[0]?.code ?? "LTF01";
-    const filler = lineCfg.machines.find(
-      (m) => m.code.startsWith("LTF") || m.code.startsWith("LFL"),
-    );
-    map[key] = filler?.code ?? firstMachine;
-  }
-
-  for (const plant of PLANTS) {
-    if (plant.id === "J2" || !plant.isOperational || !plant.zones) continue;
-    for (const zone of plant.zones) {
-      for (const line of zone.lines) {
-        const key = `${plant.id}:${line.id}`;
-        const first = line.machines[0]?.id ?? `${line.id}-M1`;
-        map[key] = line.bottleneck && line.bottleneck !== "-" ? line.bottleneck : first;
-      }
-    }
-  }
-
-  return map;
-})();
-
+/** Representative asset (bottleneck) of a line, from the Asset Management master (assetMaster.ts). */
 export function getBottleneck(plantId: string, lineId: string): string {
-  const key = `${plantId}:${lineId}`;
-  if (BOTTLENECK_BY_LINE[key]) {
-    return BOTTLENECK_BY_LINE[key]!;
-  }
-  const line =
-    getLine(plantId, "A", lineId) || getLine(plantId, "B", lineId) || getLine(plantId, "C", lineId);
-  return line?.machines[0]?.id ?? "M01";
+  return getRepresentativeAsset(plantId, lineId);
 }
 
 export function getLineBottleneck(plantId: string, line: string | { id: string }): string {
@@ -107,6 +78,9 @@ export function getMachineMaxRunRate(_plantId: string, machineCode: string): num
  * Standard run rate of a line (in ppm).
  */
 export function getSkuStandardRunRate(plantId: string, lineId: string, sku?: string): number {
+  // SRR Line from the master; legacy readers (live pages) fall back to the derived value when it is not set.
+  const master = getLineSrr(plantId, lineId);
+  if (master !== null) return master;
   const bottleneck = getBottleneck(plantId, lineId);
   const maxRate = getMachineMaxRunRate(plantId, bottleneck);
   return Math.round(maxRate * 0.88);
@@ -457,7 +431,7 @@ function computeEntityMetricsForWindow(
 
   if (entityType === "line") {
     const lineId = entityId;
-    const topology = LINE_TOPOLOGY[lineId] ?? "SEQ";
+    const topology = getLineOperation(plantId, lineId);
     const bottleneck = getBottleneck(plantId, lineId);
 
     const line =

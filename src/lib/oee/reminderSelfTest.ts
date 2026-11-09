@@ -107,7 +107,7 @@ export function runReminderSelfTest(): { passed: boolean; results: Check[] } {
     const counts = getReminderCounts(plantId, lineId, shiftC, nowMs);
     const revealSec = Math.min(SHIFT_SECONDS, nowMs / 1000 - shiftC.startSec);
     let expected = 0;
-    const perType = { downtime: 0, minor_stop: 0, speed_loss: 0, negative_speed_loss: 0 };
+    const perType = { downtime: 0, minor_stop: 0, speed_loss: 0 };
     const codes = getLineMachineCodes(plantId, lineId);
     for (const c of codes) {
       const tl = getShiftTimeline(c, { ...shiftC, elapsedSec: revealSec }, revealSec, plantId);
@@ -115,8 +115,7 @@ export function runReminderSelfTest(): { passed: boolean; results: Check[] } {
       perType.downtime += k.downtime;
       perType.minor_stop += k.minor_stop;
       perType.speed_loss += k.speed_loss;
-      perType.negative_speed_loss += k.negative_speed_loss;
-      expected += k.downtime + k.minor_stop + k.speed_loss + k.negative_speed_loss;
+      expected += k.downtime + k.minor_stop + k.speed_loss;
     }
     check("line has machines in scope", codes.length > 0, codes.join(","));
     check(
@@ -124,13 +123,12 @@ export function runReminderSelfTest(): { passed: boolean; results: Check[] } {
       counts.total === expected &&
         counts.byType.downtime === perType.downtime &&
         counts.byType.minor_stop === perType.minor_stop &&
-        counts.byType.speed_loss === perType.speed_loss &&
-        counts.byType.negative_speed_loss === perType.negative_speed_loss,
+        counts.byType.speed_loss === perType.speed_loss,
       `total ${counts.total} vs ${expected}`,
     );
     check(
-      "breakdown includes Negative Speed Loss and total is the sum of the four types",
-      "negative_speed_loss" in counts.byType &&
+      "breakdown has only Downtime, Minor Stop and Speed Loss (speed gain is not counted) and total is their sum",
+      Object.keys(counts.byType).sort().join() === "downtime,minor_stop,speed_loss" &&
         counts.total === Object.values(counts.byType).reduce((a, b) => a + b, 0),
     );
     check(
@@ -148,7 +146,7 @@ export function runReminderSelfTest(): { passed: boolean; results: Check[] } {
       for (const e of tl.events) {
         if (
           !e.isTagged &&
-          (e.type === "downtime" || e.type === "minor_stop" || e.type === "speed_loss" || e.type === "negative_speed_loss")
+          (e.type === "downtime" || e.type === "minor_stop" || e.type === "speed_loss")
         ) {
           const id = operatorCauseKey(shiftC.shiftKey, c, e.id);
           touchedKeys.push(id);
@@ -189,7 +187,7 @@ export function runReminderSelfTest(): { passed: boolean; results: Check[] } {
         !!e60.user &&
         !!e60.shownAt &&
         e60.action === "classify" &&
-        Object.keys(e60.counts).sort().join() === "downtime,minor_stop,negative_speed_loss,speed_loss",
+        Object.keys(e60.counts).sort().join() === "downtime,minor_stop,speed_loss",
     );
     check("superseded trigger is logged without shown_at", !!e30 && e30.shownAt === null && e30.action === "superseded");
     check("shown and superseded triggers count as handled", handledMinutes(LINE, logPrefix).has(60) && handledMinutes(LINE, logPrefix).has(30));

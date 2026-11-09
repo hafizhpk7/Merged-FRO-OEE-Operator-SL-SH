@@ -246,3 +246,6 @@ export const ROLE_PERSISTENCE: "session" | "local" = "session";
 
 /** CR 5: the OEE card has no SKU-ON/OFF toggle of its own; it follows the universal SRR switch. */
 export const OEE_CARD_FOLLOWS_SRR_SWITCH = true;
+
+/** Operator tabs blocked while the SRR Line of the line is missing in the Asset Management master. */
+export const SRR_BLOCKED_TABS: readonly string[] = ["reason"];

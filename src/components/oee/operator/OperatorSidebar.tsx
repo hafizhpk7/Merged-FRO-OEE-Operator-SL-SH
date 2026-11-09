@@ -12,7 +12,9 @@ import {
 } from "lucide-react";
 import { useApp, type Role } from "@/lib/oee/app-context";
 import { reasonTagStore } from "@/lib/oee/reasonTagStore";
-import { isOeeActiveLine } from "@/lib/oee/config";
+import { isOeeActiveLine, SRR_BLOCKED_TABS } from "@/lib/oee/config";
+import { useLineOperationalMode } from "@/lib/oee/assetMaster";
+import { srrBlockStore } from "@/lib/oee/srrBlockStore";
 import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -28,6 +30,8 @@ export function OperatorSidebar({ plantId, lineId }: { plantId: string; lineId: 
   const { role, setRole, isDarkMode, setIsDarkMode } = useApp();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isActiveLine = isOeeActiveLine(plantId, lineId);
+  const reasonBlocked =
+    useLineOperationalMode(plantId, lineId).reason === "srr-line-missing" && SRR_BLOCKED_TABS.includes("reason");
 
   const handleResetData = () => {
     reasonTagStore.resetDemoData();
@@ -93,7 +97,16 @@ export function OperatorSidebar({ plantId, lineId }: { plantId: string; lineId: 
 
             <Tooltip>
               <TooltipTrigger asChild>
-                {isActiveLine ? (
+                {isActiveLine && reasonBlocked ? (
+                  <button
+                    type="button"
+                    data-testid="sidebar-reason-blocked"
+                    onClick={() => srrBlockStore.open()}
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground opacity-60 hover:bg-accent"
+                  >
+                    <ListFilter className="size-5" />
+                  </button>
+                ) : isActiveLine ? (
                   <Link
                     to="/operator/$plantId/$lineId/reason"
                     params={{ plantId, lineId }}

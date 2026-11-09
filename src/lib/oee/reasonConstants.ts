@@ -4,28 +4,24 @@ import type { LossParent } from "./lossTree";
  * Matrix mapping OEE Event Types to allowed Parent Issues (L1).
  * Master v2 compliant.
  */
-export type ClassifiableType = "downtime" | "minor_stop" | "speed_loss" | "negative_speed_loss";
+export type ClassifiableType = "downtime" | "minor_stop" | "speed_loss";
 
 export const CLASSIFIABLE_TYPES: ClassifiableType[] = [
   "downtime",
   "minor_stop",
   "speed_loss",
-  "negative_speed_loss",
 ];
 
 export const CLASSIFIABLE_LABEL: Record<ClassifiableType, { code: string; name: string }> = {
   downtime: { code: "D", name: "Downtime" },
   minor_stop: { code: "MS", name: "Minor Stop" },
   speed_loss: { code: "SL", name: "Speed Loss" },
-  negative_speed_loss: { code: "NSL", name: "Negative Speed Loss" },
 };
 
 export const REASON_L1_BY_TYPE: Record<ClassifiableType, LossParent[]> = {
   downtime: ["Planned Downtime", "Unscheduled", "Breakdown", "Setup / Changeover"],
   minor_stop: ["Planned Downtime", "Unscheduled", "Minor Stop"],
   speed_loss: ["Speed Loss"],
-  // CR 2 default until Issue Management defines the NSL taxonomy (configurable here).
-  negative_speed_loss: ["Speed Loss"],
 };
 
 /**
@@ -82,11 +78,6 @@ export const TIMELINE_COLORS = {
     solid: "bg-slate-500 border-slate-600 text-white",
     hex: "#6b7280",
     label: "Planned Downtime",
-  },
-  no_standard: {
-    solid: "bg-slate-400 border-slate-500 text-white",
-    hex: "#9ca3af",
-    label: "No Standard",
   },
   not_available: {
     hatched:

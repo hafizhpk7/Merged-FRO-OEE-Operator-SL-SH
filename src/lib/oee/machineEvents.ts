@@ -359,15 +359,13 @@ const SAMPLE_PRECLASSIFIED_REASONS = [
 /** Uncommented windows per classifiable type: the number shown on the Reason chips (CR 2/CR 4). */
 export function countUncommentedByType(
   events: MachineEvent[],
-): Record<"downtime" | "minor_stop" | "speed_loss" | "negative_speed_loss", number> {
-  const out = { downtime: 0, minor_stop: 0, speed_loss: 0, negative_speed_loss: 0 };
+): Record<"downtime" | "minor_stop" | "speed_loss", number> {
+  const out = { downtime: 0, minor_stop: 0, speed_loss: 0 };
   for (const e of events) {
+    // Negative Speed Loss (speed gain) is not classifiable and not action required.
     if (
       !e.isTagged &&
-      (e.type === "downtime" ||
-        e.type === "minor_stop" ||
-        e.type === "speed_loss" ||
-        e.type === "negative_speed_loss")
+      (e.type === "downtime" || e.type === "minor_stop" || e.type === "speed_loss")
     ) {
       out[e.type] += 1;
     }

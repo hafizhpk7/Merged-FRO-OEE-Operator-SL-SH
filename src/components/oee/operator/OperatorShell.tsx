@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { OperatorSidebar } from "./OperatorSidebar";
 import { OperatorHeader } from "./OperatorHeader";
+import { SrrBlockedModal } from "./SrrBlockedModal";
 
 export function OperatorShell({
   plantId,
@@ -24,6 +25,7 @@ export function OperatorShell({
             {...(onBeforeFinishWorkOrder ? { onBeforeFinishWorkOrder } : {})}
           />
           <main className="min-w-0 flex-1">{children}</main>
+          <SrrBlockedModal />
         </div>
       </div>
     </div>

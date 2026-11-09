@@ -1,10 +1,14 @@
 import { useState, useEffect } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { CheckCircle2, ClipboardList, LayoutGrid, XCircle, ListFilter, PauseCircle, PlayCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, ClipboardList, LayoutGrid, XCircle, ListFilter, PauseCircle, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FinishWorkOrderModal } from "./FinishWorkOrderModal";
 import { PauseWorkOrderModal } from "./PauseWorkOrderModal";
 import { workOrderStore, useWorkOrder } from "@/lib/oee/workOrderStore";
+import { useLineOperationalMode } from "@/lib/oee/assetMaster";
+import { SRR_BLOCKED_TABS } from "@/lib/oee/config";
+import { srrBlockStore } from "@/lib/oee/srrBlockStore";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getLine, getPlant } from "@/lib/oee/data";
 import {
   DropdownMenu,
@@ -40,6 +44,9 @@ export function OperatorHeader({
   const [pauseModalOpen, setPauseModalOpen] = useState(false);
   const shiftKey = getShiftInfo().shiftKey;
   const wo = useWorkOrder(lineId, shiftKey);
+  const opMode = useLineOperationalMode(plantId, lineId);
+  const srrMissing = opMode.reason === "srr-line-missing";
+  const reasonBlocked = srrMissing && SRR_BLOCKED_TABS.includes("reason");
   const [shiftOverride, setShiftOverride] = useState(() => isShiftOverrideActive());
   useEffect(() => subscribeClock(() => setShiftOverride(isShiftOverrideActive())), []);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -176,6 +183,25 @@ export function OperatorHeader({
                 <span className="size-2 rounded-full bg-emerald-500" />
                 {lineId}
               </span>
+              {srrMissing && (
+                <TooltipProvider delayDuration={150}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        data-testid="srr-missing-chip"
+                        className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
+                      >
+                        <AlertCircle className="size-3" />
+                        SRR Line belum terapply
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs text-xs">
+                      SRR Line belum ditentukan di master data Asset Management untuk line/mesin bottleneck ini.
+                      Dashboard hanya menampilkan IDW dan tab Reason belum dapat dipakai.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
             </div>
           </div>
 
@@ -270,18 +296,30 @@ export function OperatorHeader({
             <XCircle className="size-3.5" />
             Reject
           </Link>
-          <Link
-            to="/operator/$plantId/$lineId/reason"
-            params={{ plantId, lineId }}
-            className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-xs font-medium transition-colors ${
-              pathname.endsWith("/reason")
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
-            }`}
-          >
-            <ListFilter className="size-3.5" />
-            Reason
-          </Link>
+          {reasonBlocked ? (
+            <button
+              type="button"
+              data-testid="reason-tab-blocked"
+              onClick={() => srrBlockStore.open()}
+              className="flex items-center gap-2 rounded-md border border-border bg-card px-4 py-1.5 text-xs font-medium text-muted-foreground opacity-70 transition-colors hover:bg-accent"
+            >
+              <ListFilter className="size-3.5" />
+              Reason
+            </button>
+          ) : (
+            <Link
+              to="/operator/$plantId/$lineId/reason"
+              params={{ plantId, lineId }}
+              className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-xs font-medium transition-colors ${
+                pathname.endsWith("/reason")
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              <ListFilter className="size-3.5" />
+              Reason
+            </Link>
+          )}
         </div>
       </header>
 

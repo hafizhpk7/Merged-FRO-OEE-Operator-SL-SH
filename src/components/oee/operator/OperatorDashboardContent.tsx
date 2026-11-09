@@ -4,7 +4,8 @@ import { ProcessOrderCard } from "./ProcessOrderCard";
 import { ShiftPerformanceCard } from "./ShiftPerformanceCard";
 import { QaInspectionModal } from "./QaInspectionModal";
 import { LegacyShiftReminderModal } from "./LegacyShiftReminderModal";
-import { isOeeActiveLine, LEGACY_SHIFT_REMINDER, SHIFT_REMINDER_LEAD_MIN } from "@/lib/oee/config";
+import { LEGACY_SHIFT_REMINDER, SHIFT_REMINDER_LEAD_MIN } from "@/lib/oee/config";
+import { useLineOperationalMode } from "@/lib/oee/assetMaster";
 import { getPoForLine } from "@/lib/oee/poMaster";
 import { getQaIntervalForMpq } from "@/lib/oee/qaConfig";
 import { useRejectStore, rejectStore } from "@/lib/oee/rejectStore";
@@ -20,7 +21,8 @@ export function OperatorDashboardContent({
   lineId: string;
   shiftKey: string;
 }) {
-  const isActiveLine = isOeeActiveLine(plantId, lineId);
+  const opMode = useLineOperationalMode(plantId, lineId);
+  const isActiveLine = opMode.mode === "full";
   const poInfo = getPoForLine(lineId);
 
   const { totals } = useRejectStore(plantId, lineId, shiftKey);
@@ -103,9 +105,10 @@ export function OperatorDashboardContent({
         {/* Banner */}
         <div className="flex items-center gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4 text-amber-700 dark:text-amber-300 shadow-xs">
           <AlertCircle className="size-5 shrink-0" />
-          <p className="text-sm font-bold">
-            OEE is not active for this line yet ({lineId}). Only Inline Device Weigher monitoring is
-            available.
+          <p className="text-sm font-bold" data-testid="idw-banner" data-reason={opMode.reason}>
+            {opMode.reason === "srr-line-missing"
+              ? "SRR Line belum ditentukan di master data Asset Management untuk line/mesin bottleneck ini"
+              : `OEE is not active for this line yet (${lineId}). Only Inline Device Weigher monitoring is available.`}
           </p>
         </div>
 

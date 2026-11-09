@@ -226,7 +226,6 @@ export function ClassifyModal({
     downtime: "bg-red-500",
     minor_stop: "bg-purple-600",
     speed_loss: "bg-amber-500",
-    negative_speed_loss: "bg-emerald-600",
   };
 
   return (
