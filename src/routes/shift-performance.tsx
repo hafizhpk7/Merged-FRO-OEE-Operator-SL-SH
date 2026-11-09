@@ -76,7 +76,7 @@ function ShiftPerformancePage() {
           title="Shift Performance"
           crumbs={[{ label: "Kemas", to: "/live" }, { label: "Shift Performance" }]}
         />
-        <main className="flex-1 p-4">
+        <main className="flex flex-1 flex-col p-4">
           <EmptyState message="Halaman ini khusus Section Head — ganti role di header untuk membukanya." />
         </main>
       </div>

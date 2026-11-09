@@ -8,7 +8,7 @@ export function LinePicker() {
   const operationalPlants = PLANTS.filter((p) => p.isOperational);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6">
+    <div className="flex min-h-screen w-full flex-1 flex-col gap-6 p-4 sm:p-6">
       <div className="space-y-1 text-center md:text-left">
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Operator Line Selection
@@ -19,9 +19,9 @@ export function LinePicker() {
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid flex-1 content-start items-stretch gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr))]">
         {operationalPlants.map((plant) => (
-          <Card key={plant.id} className="border border-border bg-card shadow-sm">
+          <Card key={plant.id} className="h-full border border-border bg-card shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
                 <span className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary">

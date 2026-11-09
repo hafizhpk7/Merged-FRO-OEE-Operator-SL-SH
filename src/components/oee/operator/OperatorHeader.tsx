@@ -151,7 +151,7 @@ export function OperatorHeader({
           </div>
 
           {/* Pause Work Order (mock, TG-04) and Finish Work Order */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {viewingPast && (
               <span
                 data-testid="past-shift-badge"
@@ -224,7 +224,7 @@ export function OperatorHeader({
         </div>
 
         {/* Tab Navigation Segmented Control */}
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-1">
           <Link
             to="/operator/$plantId/$lineId"
             params={{ plantId, lineId }}

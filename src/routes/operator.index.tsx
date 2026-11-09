@@ -8,7 +8,7 @@ export const Route = createFileRoute("/operator/")({
 
 function OperatorIndexPage() {
   return (
-    <div className="min-h-screen bg-background py-8 pl-16">
+    <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-background pl-16">
       <OperatorMiniSidebar />
       <LinePicker />
     </div>

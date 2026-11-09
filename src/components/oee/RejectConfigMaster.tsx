@@ -60,7 +60,7 @@ export function RejectConfigMaster() {
     setSlots((cur) => cur.map((s) => (s.slotNo === no ? { ...s, ...p } : s)));
 
   return (
-    <div className="space-y-4 p-6" data-testid="reject-config-master">
+    <div className="page-fill min-h-screen p-3 sm:p-4 lg:p-6" data-testid="reject-config-master">
       <div>
         <h1 className="text-lg font-bold">Master Data: Reject Config</h1>
         <p className="text-xs text-muted-foreground">
@@ -110,6 +110,7 @@ export function RejectConfigMaster() {
         </div>
       </div>
 
+      <div className="fill-self overflow-x-auto rounded-lg border border-border bg-card">
       <table className="w-full border-collapse text-sm" data-testid="mc-slots">
         <thead>
           <tr className="bg-muted/50 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -184,8 +185,9 @@ export function RejectConfigMaster() {
           })}
         </tbody>
       </table>
+      </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
           size="sm"

@@ -27,7 +27,7 @@ export function ShiftPerformanceCard({
         : "-";
 
   return (
-    <Card className="border border-border bg-card shadow-xs flex-[1.4] min-w-[360px]">
+    <Card className="h-full min-w-0 border border-border bg-card shadow-xs">
       <CardHeader className="border-b border-border bg-muted/20 pb-3">
         <div className="flex items-center gap-2.5">
           <span className="flex size-8 items-center justify-center rounded bg-primary/10 text-primary">

@@ -266,3 +266,42 @@
     color: var(--color-foreground);
   }
 }
+
+/* Touch targets: on small screens interactive controls are at least 40px tall (tables keep their dense controls). */
+@media (max-width: 768px) {
+  :where(button, [role="tab"], [role="switch"], select, a[role="button"]):not(table *):not([data-radix-popper-content-wrapper] *) {
+    min-height: 40px;
+  }
+  :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"])):not(table *) {
+    min-height: 40px;
+  }
+}
+
+/* Page fill helpers: a short page stretches one panel so the viewport has no blank area. */
+.page-fill {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+.page-fill > .grow {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+.page-fill > .grow > .grow-child {
+  flex: 1 1 auto;
+}
+.page-fill > .fill-self {
+  flex: 1 1 auto;
+}
+
+@media (max-width: 768px) {
+  header a[href],
+  main a[data-testid="to-reconcile"] {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+  }
+}

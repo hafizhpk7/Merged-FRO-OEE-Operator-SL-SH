@@ -168,7 +168,7 @@ function SummarizationInner({ plantId, lineId }: { plantId: string; lineId: stri
   const savedLabel = rec?.updatedAt ? `Tersimpan otomatis ${formatTimeWib(rec.updatedAt / 1000)}` : "Tersimpan otomatis";
 
   return (
-    <div className="space-y-4" data-testid="summarization-page">
+    <div className="page-fill" data-testid="summarization-page">
       <nav className="text-xs text-muted-foreground" aria-label="breadcrumb">
         Beranda &gt; Pengemasan &gt; Kemas sekunder &gt; <span className="font-semibold text-foreground">Summarization</span>
       </nav>
@@ -237,7 +237,7 @@ function SummarizationInner({ plantId, lineId }: { plantId: string; lineId: stri
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border bg-card p-4">
+      <div className="fill-self overflow-x-auto rounded-lg border bg-card p-4">
         {step === 0 && (
           <div className="space-y-3">
             <div className="rounded border-l-4 pl-3">
@@ -408,7 +408,7 @@ function SummarizationInner({ plantId, lineId }: { plantId: string; lineId: stri
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" data-testid="sum-prev" disabled={step === 0} onClick={() => goStep(step - 1)}>
           Sebelumnya
         </Button>

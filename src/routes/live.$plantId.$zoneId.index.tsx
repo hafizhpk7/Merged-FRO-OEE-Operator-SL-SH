@@ -243,7 +243,7 @@ function ZoneContent({
         </div>
 
         <Panel
-          className="flex-1 w-full min-w-0 min-h-[560px] max-h-[900px]"
+          className="flex-1 w-full min-w-0 min-h-[560px]"
           title="Production Floor Map"
           subtitle={`${zone.lines.length} lines · ${machineCount} machines`}
           bodyClassName="relative p-0 overflow-hidden"

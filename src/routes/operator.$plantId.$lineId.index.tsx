@@ -20,7 +20,7 @@ function OperatorDashboardPage() {
 
   return (
     <OperatorShell plantId={plantId} lineId={lineId}>
-      <div className="space-y-4">
+      <div className="page-fill">
         <OperatorSelectors
           plantId={plantId}
           lineId={lineId}

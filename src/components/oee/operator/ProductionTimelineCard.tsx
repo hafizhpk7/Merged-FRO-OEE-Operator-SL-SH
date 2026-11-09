@@ -172,7 +172,7 @@ export function ProductionTimelineCard({
   const ticks = Array.from({ length: 31 }, (_, i) => i * 2);
 
   return (
-    <Card className="border border-border bg-card shadow-xs">
+    <Card className="fill-self flex flex-col border border-border bg-card shadow-xs">
       <CardHeader className="space-y-3 pb-2">
         <h2 className="text-lg font-bold tracking-tight text-foreground">Production Timeline</h2>
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -232,12 +232,12 @@ export function ProductionTimelineCard({
         </div>
       </CardHeader>
 
-      <CardContent className="pt-4">
-        <div className="space-y-3.5">
+      <CardContent className="flex flex-1 flex-col pt-4">
+        <div className="flex flex-1 flex-col gap-3.5">
           {rows.map((row) => (
-            <div key={row.hourIdx} className="flex items-center gap-3">
-              <span className="w-12 shrink-0 text-sm text-muted-foreground">{row.label}</span>
-              <div className="relative flex h-10 flex-1 overflow-hidden rounded-md bg-muted/30">
+            <div key={row.hourIdx} className="flex max-h-28 flex-1 items-stretch gap-3">
+              <span className="w-12 shrink-0 self-center text-sm text-muted-foreground">{row.label}</span>
+              <div className="relative flex min-h-10 flex-1 overflow-hidden rounded-md bg-muted/30">
                 {row.isFuture ? (
                   <div
                     className={`flex h-full w-full items-center justify-center ${TIMELINE_COLORS.future.hatched}`}

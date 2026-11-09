@@ -1,4 +1,4 @@
-export const BUILD_ID = "r49 · 09 Nov 2026 WIB · SIM-panel";
+export const BUILD_ID = "r50 · 09 Nov 2026 WIB · RESPONSIVE";
 
 export const FEATURES = {
   routeTreeManualSync: true,
@@ -131,6 +131,9 @@ export const FEATURES = {
   simPanelExportImport: true,
   simActiveBadgeSlSh: true,
   simPanelSelfTest: true,
+  responsiveFluidLayout: true,
+  responsiveNoBlankSpace: true,
+  responsiveAuditScript: true,
 };
 
 if (typeof window !== "undefined") {

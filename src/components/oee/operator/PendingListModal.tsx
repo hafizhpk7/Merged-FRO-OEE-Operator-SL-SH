@@ -88,7 +88,7 @@ export function PendingListModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-testid="overview-modal"
-        className="max-h-[88vh] gap-4 overflow-y-auto p-6 sm:max-w-2xl"
+        className="max-h-[88vh] gap-4 overflow-y-auto p-4 sm:p-6 sm:max-w-2xl [&>*]:min-w-0"
       >
         <DialogHeader className="flex-row items-center gap-3 space-y-0 text-left">
           <DialogTitle className="text-lg font-semibold">{label.name} overview</DialogTitle>
@@ -207,7 +207,7 @@ export function PendingListModal({
                 <div
                   key={e.id}
                   data-testid="overview-row"
-                  className={`flex items-center gap-4 rounded-lg border px-4 py-3 ${
+                  className={`flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border px-3 py-3 sm:px-4 ${
                     checked && tab === "uncommented"
                       ? "border-blue-300 bg-blue-50 dark:bg-blue-950/30"
                       : "border-border bg-card"

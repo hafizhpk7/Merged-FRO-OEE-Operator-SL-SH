@@ -61,7 +61,7 @@ export function IdwBlock({
   const isJ2 = plantId.toLowerCase() === "j2" || plantId.toLowerCase() === "jatake-2";
 
   return (
-    <Card className="border border-border bg-card shadow-xs flex-1 min-w-[320px]">
+    <Card className="h-full min-w-0 border border-border bg-card shadow-xs">
       <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-3">
         <div className="flex items-center gap-2.5">
           <span className="flex size-8 items-center justify-center rounded bg-primary/10 text-primary">

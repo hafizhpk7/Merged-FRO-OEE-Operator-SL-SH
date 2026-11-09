@@ -76,7 +76,7 @@ function Inner({ plantId, lineId }: { plantId: string; lineId: string }) {
   const td = "border px-2 py-1 text-xs text-center";
 
   return (
-    <div className="space-y-4" data-testid="reconcile-page">
+    <div className="page-fill" data-testid="reconcile-page">
       <nav className="text-xs text-muted-foreground">
         Beranda &gt; Pengemasan &gt; Kemas sekunder &gt; <span className="font-semibold text-foreground">Rekonsiliasi All Batch</span>
       </nav>
@@ -85,7 +85,7 @@ function Inner({ plantId, lineId }: { plantId: string; lineId: string }) {
           <h1 className="text-base font-bold">Rekonsiliasi All Batch (mock)</h1>
           <span className="font-mono text-xs">PO FG {po.poNumber}</span>
           {confirmed && <span className="rounded bg-slate-200 px-2 py-0.5 text-[11px] font-semibold" data-testid="recon-confirmed">Terkonfirmasi</span>}
-          <Link to="/operator/$plantId/$lineId/summarization" params={{ plantId, lineId }} className="ml-auto text-xs font-semibold text-primary underline">
+          <Link to="/operator/$plantId/$lineId/summarization" params={{ plantId, lineId }} className="ml-auto inline-flex min-h-10 items-center text-xs font-semibold text-primary underline">
             Lihat Summarization
           </Link>
         </div>
@@ -105,7 +105,7 @@ function Inner({ plantId, lineId }: { plantId: string; lineId: string }) {
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border bg-card p-4">
+      <div className="fill-self overflow-x-auto rounded-lg border bg-card p-4">
         <table className="w-full border-collapse" data-testid="recon-table">
           <thead>
             <tr>

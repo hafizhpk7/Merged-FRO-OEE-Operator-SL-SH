@@ -19,23 +19,23 @@ export function OperatorOeeStrip({ snapshot }: { snapshot: ShiftSnapshot }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="flex items-center gap-2 rounded-md bg-background px-3 py-1.5 border border-border">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 rounded-md bg-background px-3 py-1.5 border border-border">
           <span className="text-[10px] font-semibold uppercase text-muted-foreground">OEE</span>
           <span className="font-mono text-xs font-bold text-foreground">{oee}</span>
         </div>
-        <div className="flex items-center gap-2 rounded-md bg-background px-3 py-1.5 border border-border">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 rounded-md bg-background px-3 py-1.5 border border-border">
           <span className="text-[10px] font-semibold uppercase text-muted-foreground">
             Availability
           </span>
           <span className="font-mono text-xs font-bold text-foreground">{avail}</span>
         </div>
-        <div className="flex items-center gap-2 rounded-md bg-background px-3 py-1.5 border border-border">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 rounded-md bg-background px-3 py-1.5 border border-border">
           <span className="text-[10px] font-semibold uppercase text-muted-foreground">
             Performance
           </span>
           <span className="font-mono text-xs font-bold text-foreground">{perf}</span>
         </div>
-        <div className="flex items-center gap-2 rounded-md bg-background px-3 py-1.5 border border-border">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 rounded-md bg-background px-3 py-1.5 border border-border">
           <span className="text-[10px] font-semibold uppercase text-muted-foreground">Quality</span>
           <span className="font-mono text-xs font-bold text-foreground">{qual}</span>
         </div>

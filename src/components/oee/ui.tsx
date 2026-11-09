@@ -628,7 +628,7 @@ export function PageHeader({
 
 export function EmptyState({ message }: { message: string }) {
   return (
-    <div className="grid min-h-32 place-items-center rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
+    <div className="grid min-h-32 flex-1 place-items-center rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
       {message}
     </div>
   );

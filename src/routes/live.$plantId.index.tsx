@@ -125,7 +125,7 @@ function PlantView() {
               <MetricBar label="Quality" value={plantMetrics.quality} />
             </div>
           </div>
-          <div className="grid w-full flex-1 gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 min-w-0">
+          <div className="grid w-full flex-1 gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))] min-w-0 items-stretch">
             {plant.zones.map((z) => {
               const liveZone = zoneMetrics[z.id] ?? getMetrics(plantId, "zone", z.id, resolved);
               const deltaVal = liveZone.deltaOee;
@@ -143,7 +143,7 @@ function PlantView() {
                   quality={liveZone.quality}
                   dataMetric={`zone-oee-${z.id}`}
                   dataRaw={liveZone.oee}
-                  className="min-w-[260px]"
+                  className="min-w-0"
                   onClick={() =>
                     navigate({
                       to: "/live/$plantId/$zoneId",
@@ -156,7 +156,7 @@ function PlantView() {
           </div>
         </div>
 
-        <div className="grid w-full gap-3 lg:grid-cols-[1.6fr_1fr] lg:h-[clamp(560px,calc(100dvh-300px),820px)]">
+        <div className="grid w-full gap-3 lg:grid-cols-[1.6fr_1fr] lg:h-[max(560px,calc(100dvh-300px))]">
           <Panel
             title="Zone map"
             subtitle="Click a zone to open Zone View"

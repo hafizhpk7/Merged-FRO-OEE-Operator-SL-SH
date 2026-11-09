@@ -75,7 +75,7 @@ export function RejectPageContent({
   ];
 
   return (
-    <div className="space-y-4 pb-12">
+    <div className="page-fill fill-self pb-2">
       {/* Legend (OP-09) */}
       <div className="flex flex-wrap items-center gap-8 rounded-lg border border-border bg-card px-4 py-3 shadow-xs">
         <div className="flex items-center gap-3">
@@ -137,7 +137,7 @@ export function RejectPageContent({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" data-testid="reject-cards">
+      <div className="grid flex-1 grid-cols-1 items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3 min-[1920px]:grid-cols-4 [grid-auto-rows:minmax(min-content,1fr)]" data-testid="reject-cards">
         {visible.map((card) => {
           const series = rejectStore.getHourlySeries(
             plantId,

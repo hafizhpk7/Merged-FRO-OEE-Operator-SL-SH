@@ -68,13 +68,13 @@ export function HourlyRealisasi({ plantId, lineId }: { plantId: string; lineId: 
   ];
 
   return (
-    <div className="space-y-5 pb-10" data-testid="hourly-page">
+    <div className="page-fill pb-4" data-testid="hourly-page">
       <div className="flex flex-wrap items-center gap-3">
         <Link
           to="/operator/$plantId/$lineId"
           params={{ plantId, lineId }}
           data-testid="hourly-back"
-          className="flex items-center gap-1 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-accent"
+          className="flex min-h-10 items-center gap-1 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-accent"
         >
           <ChevronLeft className="size-3.5" /> Dashboard
         </Link>
@@ -170,9 +170,9 @@ export function HourlyRealisasi({ plantId, lineId }: { plantId: string; lineId: 
       </div>
 
       {/* Hourly table (no Keterangan column) */}
-      <div className="space-y-1.5">
+      <div className="grow space-y-1.5">
         <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Tabel per jam</p>
-        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+        <div className="grow-child overflow-x-auto rounded-lg border border-border bg-card">
           <table className="w-full text-xs" data-testid="hourly-table">
             <thead className="bg-muted/40 text-left text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>

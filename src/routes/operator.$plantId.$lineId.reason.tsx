@@ -140,7 +140,7 @@ function OperatorReasonInner() {
       lineId={lineId}
       onBeforeFinishWorkOrder={(proceed) => handleTriggerShiftFinish(proceed)}
     >
-      <div className="space-y-4">
+      <div className="page-fill">
         {/* Selectors Row */}
         <OperatorSelectors
           plantId={plantId}

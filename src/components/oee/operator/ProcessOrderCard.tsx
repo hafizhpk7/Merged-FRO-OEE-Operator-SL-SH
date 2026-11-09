@@ -66,7 +66,7 @@ export function ProcessOrderCard({
   });
 
   return (
-    <Card className="border border-border bg-card shadow-xs flex-[1.4] min-w-[360px]">
+    <Card className="h-full min-w-0 border border-border bg-card shadow-xs">
       <CardHeader className="border-b border-border bg-muted/20 pb-3">
         <div className="flex items-center gap-2.5 pb-2">
           <span className="flex size-8 items-center justify-center rounded bg-primary/10 text-primary">
@@ -141,7 +141,7 @@ export function ProcessOrderCard({
             <ShieldCheck className="size-4 text-primary" />
             <span className="font-bold text-foreground">QA Inspection</span>
           </div>
-          <div className="flex items-center gap-4 font-mono">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono">
             <span className="text-muted-foreground">
               Sample: <b>{qaStats.sample}</b>
             </span>

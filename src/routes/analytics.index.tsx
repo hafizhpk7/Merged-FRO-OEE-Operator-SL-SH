@@ -158,7 +158,7 @@ function AnalyticsPage() {
               title="OEE Comparison"
               subtitle="Read-only comparison of two periods"
               action={
-                <div className="flex items-center gap-1 text-[10px]">
+                <div className="flex flex-wrap items-center gap-1 text-[10px]">
                   <select
                     aria-label="Compare period"
                     className="rounded border border-border bg-surface px-1 py-0.5"
@@ -206,7 +206,7 @@ function AnalyticsPage() {
             title="OEE by Line"
             subtitle={sortAsc ? "Lowest → highest" : "Highest → lowest"}
             action={
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <select
                   aria-label="Select Line"
                   multiple={false}
