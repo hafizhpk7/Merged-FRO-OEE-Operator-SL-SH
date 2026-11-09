@@ -1,5 +1,5 @@
 /**
- * Dev self-test for CR 1 part C (Konfigurasi detail + Reject lain). Run `runRejectEditorSelfTest()`
+ * Dev self-test for CR 1 part C (Konfigurasi detail; single-L2 review version). Run `runRejectEditorSelfTest()`
  * in the browser console. Everything it writes carries the operator name below and is purged.
  */
 import { J2_LINES_CONFIG } from "./j2-layout-config";
@@ -18,13 +18,12 @@ type Candidate = {
   name: string;
   hour: number;
   actual: number;
-  l2: L2Id[];
+  l2: L2Id;
 };
 
 const PLANT = "J2";
 const PILOT_LINES = ["TUP01", "TUP13", "TUP14", "BOP15", "BOP16"];
 const OP = "Self-test-editor";
-const L2S: L2Id[] = ["RM", "RP", "RS"];
 
 export function runRejectEditorSelfTest(): { passed: boolean; results: Check[] } {
   const results: Check[] = [];
@@ -66,38 +65,34 @@ export function runRejectEditorSelfTest(): { passed: boolean; results: Check[] }
   try {
     // pick a machine / reason / hour that has actual reject
     let pick = null as Candidate | null;
-    let multi = null as Candidate | null;
     for (const line of PILOT_LINES) {
       for (const m of getLineMachineCodesForConfig(PLANT, line)) {
         if (kpi(line, m).output < 200) continue; // needs output so Good (= output - reject) can move
         for (const card of rejectConfigStore.getCards(PLANT, line, m)) {
-          const by = rejectStore.getHourlyByL2(PLANT, line, shiftKey, card.l3Id, m);
+          const by = rejectStore.getHourly(PLANT, line, shiftKey, card.l3Id, m);
           for (let h = 0; h < 8; h++) {
-            const actual = L2S.reduce((s, k) => s + (by.actual[k][h] ?? 0), 0);
-            const cur = (k: L2Id) => by.current[k][h] ?? 0;
+            const actual = by.actual[h] ?? 0;
             const cand = { line, m, l3: card.l3Id, name: card.name, hour: h, actual, l2: card.l2 };
             if (actual >= 2 && (!pick || actual > pick.actual)) pick = cand;
-            if (card.l2.length > 1 && L2S.reduce((s, k) => s + cur(k), 0) >= 2 && !multi) multi = cand;
           }
         }
       }
     }
     check("a reason with actual reject in an hour exists", !!pick);
-    check("a multi-L2 reason with reject exists", !!multi);
 
     // ---- validation (OP-15..OP-18) ------------------------------------------------------------
     if (pick) {
       const p = pick;
       const b = base(p.line, p.m, p.l3, p.name);
-      const l2 = p.l2[0] as L2Id;
+      const l2 = p.l2;
       const corrBefore = rejectStore.getCorrections(PLANT, p.line, shiftKey, p.l3, p.m).length;
       const auditBefore = rejectStore.getAudit(PLANT, p.line, p.m, p.l3).length;
       const bad = [
-        { ...b, operator: "", changes: [{ hourIdx: p.hour, minute: 1, l2Id: l2, after: -1 }] },
-        { ...b, reason: "   ", changes: [{ hourIdx: p.hour, minute: 1, l2Id: l2, after: -1 }] },
-        { ...b, leader: "", changes: [{ hourIdx: p.hour, minute: 1, l2Id: l2, after: -1 }] },
-        { ...b, changes: [{ hourIdx: p.hour, minute: 1, l2Id: l2, after: -1.5 }] },
-        { ...b, changes: [{ hourIdx: p.hour, minute: 1, l2Id: l2, after: -(p.actual + 1) }] },
+        { ...b, operator: "", changes: [{ hourIdx: p.hour, minute: 1, after: -1 }] },
+        { ...b, reason: "   ", changes: [{ hourIdx: p.hour, minute: 1, after: -1 }] },
+        { ...b, leader: "", changes: [{ hourIdx: p.hour, minute: 1, after: -1 }] },
+        { ...b, changes: [{ hourIdx: p.hour, minute: 1, after: -1.5 }] },
+        { ...b, changes: [{ hourIdx: p.hour, minute: 1, after: -(p.actual + 1) }] },
         { ...b, changes: [] },
       ].map((x) => rejectStore.saveCorrections(x));
       check("save is refused without operator, reason, leader, integer qty, or any change", bad.every((r) => !r.ok));
@@ -108,7 +103,7 @@ export function runRejectEditorSelfTest(): { passed: boolean; results: Check[] }
       );
       const over = rejectStore.saveCorrections({
         ...b,
-        changes: [{ hourIdx: p.hour, minute: 1, l2Id: l2, after: -(p.actual + 1) }],
+        changes: [{ hourIdx: p.hour, minute: 1, after: -(p.actual + 1) }],
       });
       check(
         "reducing below the hour's actual is refused with the hour named",
@@ -118,12 +113,12 @@ export function runRejectEditorSelfTest(): { passed: boolean; results: Check[] }
 
       // ---- the worked example: -k on a reason with `actual` in an hour --------------------------
       const k = Math.min(6, p.actual);
-      const t0 = rejectStore.getCategoryTotals(PLANT, p.line, shiftKey, p.m);
+      const t0 = rejectStore.getL2Totals(PLANT, p.line, shiftKey, p.m);
       const k0 = kpi(p.line, p.m);
       const hourCur0 = rejectStore.getHourlySeries(PLANT, p.line, shiftKey, p.l3, p.m).current[p.hour] ?? 0;
       const res = rejectStore.saveCorrections({
         ...b,
-        changes: [{ hourIdx: p.hour, minute: 10, l2Id: l2, after: -k }],
+        changes: [{ hourIdx: p.hour, minute: 10, after: -k }],
       });
       wrote = true;
       check("worked example saves", res.ok);
@@ -133,12 +128,9 @@ export function runRejectEditorSelfTest(): { passed: boolean; results: Check[] }
         series.actual[p.hour] === p.actual && series.current[p.hour] === hourCur0 - k,
         `actual ${series.actual[p.hour]}, current ${series.current[p.hour]}`,
       );
-      const t1 = rejectStore.getCategoryTotals(PLANT, p.line, shiftKey, p.m);
+      const t1 = rejectStore.getL2Totals(PLANT, p.line, shiftKey, p.m);
       const k1 = kpi(p.line, p.m);
-      const cardSum = (t: typeof t0) => {
-        const r = t.byL3[p.l3] ?? { RM: 0, RP: 0, RS: 0 };
-        return r.RM + r.RP + r.RS;
-      };
+      const cardSum = (t: typeof t0) => t.byL3[p.l3] ?? 0;
       check("card total drops by k", cardSum(t1) === cardSum(t0) - k, `${cardSum(t0)} -> ${cardSum(t1)}`);
       check("chip totals drop by k (category and Semua)", t1.byL2[l2] === t0.byL2[l2] - k && t1.total === t0.total - k);
       check(
@@ -176,7 +168,7 @@ export function runRejectEditorSelfTest(): { passed: boolean; results: Check[] }
       const edit = rejectStore.saveCorrections({
         ...b,
         reason: "Edit",
-        changes: [{ hourIdx: p.hour, minute: 10, l2Id: l2, after: -(k - 1) }],
+        changes: [{ hourIdx: p.hour, minute: 10, after: -(k - 1) }],
       });
       const aEdit = rejectStore.getAudit(PLANT, p.line, p.m, p.l3).filter((a) => a.operator === OP)[0];
       check(
@@ -187,7 +179,7 @@ export function runRejectEditorSelfTest(): { passed: boolean; results: Check[] }
         const list = rejectStore.getAudit(PLANT, p.line, p.m, p.l3);
         return list.every((a, i) => i === 0 || list[i - 1]!.savedAt >= a.savedAt);
       })());
-      const del = rejectStore.saveCorrections({ ...b, reason: "Hapus", changes: [{ hourIdx: p.hour, minute: 10, l2Id: l2, after: 0 }] });
+      const del = rejectStore.saveCorrections({ ...b, reason: "Hapus", changes: [{ hourIdx: p.hour, minute: 10, after: 0 }] });
       const afterDel = rejectStore.getHourlySeries(PLANT, p.line, shiftKey, p.l3, p.m);
       check(
         "deleting the row restores Current to the original and logs after 0",
@@ -198,72 +190,19 @@ export function runRejectEditorSelfTest(): { passed: boolean; results: Check[] }
       );
     }
 
-    // ---- multi-L2: one qty per category per row (OP-14) ------------------------------------------
-    if (multi) {
-      const mm = multi;
-      const b = base(mm.line, mm.m, mm.l3, mm.name);
-      const [a, c] = [mm.l2[0] as L2Id, mm.l2[1] as L2Id];
-      const t0 = rejectStore.getCategoryTotals(PLANT, mm.line, shiftKey, mm.m);
-      const sum0 = Object.values(t0.byL3[mm.l3] ?? {}).reduce((s, v) => s + v, 0);
-      const r = rejectStore.saveCorrections({
-        ...b,
-        changes: [
-          { hourIdx: mm.hour, minute: 20, l2Id: a, after: -1 },
-          { hourIdx: mm.hour, minute: 20, l2Id: c, after: 1 },
-        ],
-      });
+    // ---- review version: one Qty per row, extra-reject card removed -----------------------------------------
+    const cs = rejectConfigStore as unknown as Record<string, unknown>;
+    check("the extra-reject card API (getOtherL3Options) is gone from the config store", cs["getOtherL3Options"] === undefined);
+    if (pick) {
+      const p = pick;
+      const b = base(p.line, p.m, p.l3, p.name);
+      const t0 = rejectStore.getL2Totals(PLANT, p.line, shiftKey, p.m);
+      const r = rejectStore.saveCorrections({ ...b, changes: [{ hourIdx: p.hour, minute: 20, after: 2 }] });
       wrote = true;
-      const t1 = rejectStore.getCategoryTotals(PLANT, mm.line, shiftKey, mm.m);
-      const sum1 = Object.values(t1.byL3[mm.l3] ?? {}).reduce((s, v) => s + v, 0);
-      const rows = rejectStore.getAudit(PLANT, mm.line, mm.m, mm.l3).filter((x) => x.operator === OP && x.minute === 20);
-      check("multi-L2 row saves one value per category on the same minute", r.ok && rows.length === 2);
-      check(
-        "moving reject between categories keeps the total (sum over categories) and shifts the chips",
-        sum1 === sum0 && t1.byL2[a] === t0.byL2[a] - 1 && t1.byL2[c] === t0.byL2[c] + 1 && t1.total === t0.total,
-      );
-      check(
-        "audit keeps hour Current before and after (equal when only moved)",
-        rows.every((x) => x.hourCurrentBefore === x.hourCurrentAfter),
-      );
-    }
-
-    // ---- "Reject lain" (OP-20) -------------------------------------------------------------------------
-    const lineL = PILOT_LINES[0] as string;
-    const machineL = getLineMachineCodesForConfig(PLANT, lineL)[0] as string;
-    const opts = rejectConfigStore.getOtherL3Options(PLANT, lineL, machineL, "RM");
-    const cardIds = new Set(rejectConfigStore.getCards(PLANT, lineL, machineL).map((x) => x.l3Id));
-    check(
-      "Reject lain options are bound to the L2 and have no card yet",
-      opts.length > 0 && opts.every((o) => !cardIds.has(o.l3Id)),
-      opts.map((o) => o.name).join(", "),
-    );
-    const o = opts[0];
-    if (o) {
-      const t0 = rejectStore.getCategoryTotals(PLANT, lineL, shiftKey, machineL);
-      const k0 = kpi(lineL, machineL);
-      const r = rejectStore.saveCorrections({
-        ...base(lineL, machineL, o.l3Id, o.name),
-        changes: [{ hourIdx: 0, minute: 5, l2Id: "RM", after: 3 }],
-      });
-      wrote = true;
-      const t1 = rejectStore.getCategoryTotals(PLANT, lineL, shiftKey, machineL);
-      const k1 = kpi(lineL, machineL);
-      check("Reject lain entry saves", r.ok);
-      check(
-        "it appears under Reject lain and in the RM chip and Semua",
-        t1.otherTotal === t0.otherTotal + 3 && t1.byL2.RM === t0.byL2.RM + 3 && t1.total === t0.total + 3 && !!t1.otherByL3[o.l3Id],
-      );
-      check("Reject lain feeds the same KPI totals (operator, SL/SH)", k1.total === k0.total + 3 && k1.rejects === k0.rejects + 3 && k1.slsh === k0.slsh + 3);
-      const cardsSum =
-        Object.values(t1.byL3).reduce((s, v) => s + v.RM + v.RP + v.RS, 0) + t1.otherTotal;
-      check("sum of cards + Reject lain = Semua = KPI total", cardsSum === t1.total && t1.total === k1.total);
-      check(
-        "its audit row shows before 0, after 3, delta +3",
-        (() => {
-          const a = rejectStore.getAudit(PLANT, lineL, machineL, o.l3Id).filter((x) => x.operator === OP)[0];
-          return !!a && a.before === 0 && a.after === 3 && a.delta === 3 && a.l2Id === "RM";
-        })(),
-      );
+      const t1 = rejectStore.getL2Totals(PLANT, p.line, shiftKey, p.m);
+      const rows = rejectStore.getAudit(PLANT, p.line, p.m, p.l3).filter((x) => x.operator === OP && x.minute === 20);
+      check("an increase (+2) saves one audit row with the card's single L2", r.ok && rows.length === 1 && rows[0]?.l2Id === p.l2 && rows[0]?.delta === 2);
+      check("it raises the card, its L2 chip and Semua by 2", (t1.byL3[p.l3] ?? 0) === (t0.byL3[p.l3] ?? 0) + 2 && t1.byL2[p.l2] === t0.byL2[p.l2] + 2 && t1.total === t0.total + 2);
     }
 
     // ---- Stage 3 add/remove paths are gone --------------------------------------------------------------------

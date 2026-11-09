@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { REJECT_TYPES } from "./rejectConfig";
+import { getEntry, legacyFirstL2, migrateL3, parseEntryId } from "./rejectConfig";
 import { l3Name, rejectConfigStore, type L2Id } from "./rejectConfigStore";
 import { makeRng, rand } from "./rng";
 import { formatTimeWib, getShiftInfo } from "./shiftClock";
@@ -77,7 +77,36 @@ export type CorrectionAudit = {
   hourCurrentAfter: number;
 };
 
-export type CorrectionChange = { hourIdx: number; minute: number; l2Id: L2Id; after: number };
+/** One correction value for (hour, minute) of one reject entry; the L2 follows from the entry. */
+export type CorrectionChange = { hourIdx: number; minute: number; after: number };
+
+/** L2 of an entry id (explicit L2 wins; unknown legacy ids fall back to their first old binding). */
+const l2OfEntry = (l3Id: string, l2?: L2Id): L2Id =>
+  l2 ?? getEntry(l3Id)?.l2 ?? parseEntryId(l3Id)?.l2 ?? legacyFirstL2(l3Id);
+
+/** Review migration: a stored pre-review L3 id becomes the entry under its (explicit) L2. */
+function migrateRef(id: string, l2?: L2Id): { id: string; l2: L2Id } {
+  const useL2 = l2 ?? parseEntryId(id)?.l2 ?? legacyFirstL2(id);
+  return migrateL3(id, useL2) ?? { id, l2: useL2 };
+}
+
+function migrateState(st: RejectStoreSchema): RejectStoreSchema {
+  return {
+    ...st,
+    userLogs: st.userLogs.map((l) => {
+      const r = migrateRef(l.l3Id ?? l.rejectTypeId, l.l2Id);
+      return { ...l, rejectTypeId: r.id, l3Id: r.id, l2Id: r.l2 };
+    }),
+    corrections: st.corrections.map((c) => {
+      const r = migrateRef(c.rejectTypeId, c.l2Id);
+      return { ...c, rejectTypeId: r.id, l2Id: r.l2 };
+    }),
+    audit: st.audit.map((a) => {
+      const r = migrateRef(a.l3Id, a.l2Id);
+      return { ...a, l3Id: r.id, l2Id: r.l2 };
+    }),
+  };
+}
 
 type RejectStoreSchema = {
   userLogs: RejectLog[];
@@ -117,12 +146,12 @@ function getStoredState(): RejectStoreSchema {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return EMPTY_STATE();
     const parsed = JSON.parse(raw) as Partial<RejectStoreSchema>;
-    return {
+    return migrateState({
       userLogs: parsed.userLogs ?? [],
       removedLogIds: parsed.removedLogIds ?? [],
       corrections: parsed.corrections ?? [],
       audit: parsed.audit ?? [],
-    };
+    });
   } catch {
     return EMPTY_STATE();
   }
@@ -167,7 +196,14 @@ const slotSnapshots: Record<string, LineSlots> = (() => {
   if (typeof window === "undefined") return {};
   try {
     const raw = localStorage.getItem(SNAPSHOT_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, LineSlots>) : {};
+    const parsed = raw ? (JSON.parse(raw) as Record<string, LineSlots>) : {};
+    for (const k of Object.keys(parsed)) {
+      parsed[k] = (parsed[k] ?? []).map((sl) => {
+        const r = migrateRef(sl.l3Id, sl.l2Id);
+        return { ...sl, l3Id: r.id, l2Id: r.l2 };
+      });
+    }
+    return parsed;
   } catch {
     return {};
   }
@@ -216,18 +252,19 @@ function generateBaselineLogs(plantId: string, lineId: string, shiftKey: string)
   const shiftStartSec = shiftInfo.startSec;
   const nowSec = Math.floor(getNowMs() / 1000);
 
-  const groups = new Map<string, { machineCode: string; l3Id: string; l2s: L2Id[] }>();
+  const groups = new Map<string, { machineCode: string; l3Id: string; l2Id: L2Id }>();
   for (const slot of slotsForShift(plantId, lineId, shiftKey, shiftKey === shiftInfo.shiftKey)) {
-    const k = `${slot.machineCode}|${slot.l3Id}`;
-    const g = groups.get(k) ?? { machineCode: slot.machineCode, l3Id: slot.l3Id, l2s: [] };
-    if (!g.l2s.includes(slot.l2Id)) g.l2s.push(slot.l2Id);
-    groups.set(k, g);
+    groups.set(`${slot.machineCode}|${slot.l3Id}`, {
+      machineCode: slot.machineCode,
+      l3Id: slot.l3Id,
+      l2Id: slot.l2Id,
+    });
   }
 
   for (const g of groups.values()) {
     const rng = makeRng(`${plantId}:${lineId}:${shiftKey}:${g.machineCode}:${g.l3Id}`);
     const name = l3Name(g.l3Id);
-    const category = REJECT_TYPES.find((t) => t.id === g.l3Id)?.category ?? "Reject";
+    const category = getEntry(g.l3Id)?.category ?? "Reject";
 
     for (let h = 0; h < 8; h++) {
       const hourStartSec = shiftStartSec + h * 3600;
@@ -240,16 +277,14 @@ function generateBaselineLogs(plantId: string, lineId: string, shiftKey: string)
         const offsetMin = Math.floor(rng() * 60);
         const atSec = hourStartSec + offsetMin * 60;
         const qty = Math.floor(rng() * 3) + 1;
-        // which slot (L2) this sensor entry lands in
-        const l2Id = g.l2s[Math.floor(rng() * g.l2s.length)] ?? "RM";
         logs.push({
-          id: `sensor-${lineId}-${g.machineCode}-${g.l3Id}-${l2Id}-h${h}-c${c}`,
+          id: `sensor-${lineId}-${g.machineCode}-${g.l3Id}-h${h}-c${c}`,
           plantId,
           lineId,
           machineCode: g.machineCode,
           rejectTypeId: g.l3Id,
           rejectTypeName: name,
-          l2Id,
+          l2Id: g.l2Id,
           l3Id: g.l3Id,
           qty,
           source: "sensor",
@@ -265,22 +300,14 @@ function generateBaselineLogs(plantId: string, lineId: string, shiftKey: string)
   return logs;
 }
 
-/** Entries stored before CR 1 have no L2: give them the machine's default L2 (read side only). */
+/** Entries stored without L2 get the L2 of their entry (read side only). */
 function withL2(log: RejectLog): RejectLog {
   if (log.l2Id && log.l3Id) return log;
   const l3Id = log.l3Id ?? log.rejectTypeId;
-  const l2Id =
-    log.l2Id ?? rejectConfigStore.defaultL2(log.plantId, log.lineId, log.machineCode, l3Id);
-  return { ...log, l3Id, l2Id };
+  return { ...log, l3Id, l2Id: l2OfEntry(l3Id, log.l2Id) };
 }
 
-const L2_KEYS: L2Id[] = ["RM", "RP", "RS"];
 const emptyByL2 = (): Record<L2Id, number> => ({ RM: 0, RP: 0, RS: 0 });
-const emptyHoursByL2 = (): Record<L2Id, number[]> => ({
-  RM: new Array(8).fill(0),
-  RP: new Array(8).fill(0),
-  RS: new Array(8).fill(0),
-});
 
 export const rejectStore = {
   subscribe(listener: StoreListener) {
@@ -306,9 +333,7 @@ export const rejectStore = {
         rejectTypeId: c.rejectTypeId,
         rejectTypeName: c.rejectTypeName,
         l3Id: c.rejectTypeId,
-        l2Id:
-          c.l2Id ??
-          rejectConfigStore.defaultL2(c.plantId, c.lineId, c.machineCode, c.rejectTypeId),
+        l2Id: l2OfEntry(c.rejectTypeId, c.l2Id),
         qty: c.delta,
         source: "correction" as const,
         at: shiftStartSec + c.hourIdx * 3600 + c.minute * 60,
@@ -355,78 +380,57 @@ export const rejectStore = {
   },
 
   /**
-   * Hourly Actual (sensor baseline) and Current (after manual entries and corrections) for one L3
-   * on one machine, per L2. Not clamped: Current + corrections are exactly what getTotals sums.
+   * Hourly Actual (sensor baseline) and Current (after manual entries and corrections) for one reject
+   * entry (one L2) on one machine. Not clamped: Current + corrections are exactly what getTotals sums.
    */
-  getHourlyByL2(
-    plantId: string,
-    lineId: string,
-    shiftKey: string,
-    rejectTypeId: string,
-    machineCode?: string,
-  ) {
+  getHourly(plantId: string, lineId: string, shiftKey: string, l3Id: string, machineCode?: string) {
     const state = currentCache;
     const baseline = generateBaselineLogs(plantId, lineId, shiftKey);
     const removed = state.removedLogIds;
     const shiftStartSec = getShiftInfo().startSec;
-    const actual = emptyHoursByL2();
-    const current = emptyHoursByL2();
+    const actual: number[] = new Array(8).fill(0);
+    const current: number[] = new Array(8).fill(0);
     const match = (l: RejectLog) =>
-      l.rejectTypeId === rejectTypeId &&
+      l.rejectTypeId === l3Id &&
       (!machineCode || l.machineCode === machineCode) &&
       !removed.includes(l.id);
 
     for (const log of baseline.filter(match)) {
       const h = Math.floor((log.at - shiftStartSec) / 3600);
-      if (h >= 0 && h < 8) actual[log.l2Id][h] = (actual[log.l2Id][h] ?? 0) + log.qty;
+      if (h >= 0 && h < 8) actual[h] = (actual[h] ?? 0) + log.qty;
     }
-    for (const raw of [...baseline, ...state.userLogs].filter(match)) {
-      const log = withL2(raw);
+    for (const log of [...baseline, ...state.userLogs.map(withL2)].filter(match)) {
       const h = Math.floor((log.at - shiftStartSec) / 3600);
-      if (h >= 0 && h < 8) current[log.l2Id][h] = (current[log.l2Id][h] ?? 0) + log.qty;
+      if (h >= 0 && h < 8) current[h] = (current[h] ?? 0) + log.qty;
     }
     for (const c of state.corrections) {
       if (
         c.plantId === plantId &&
         c.lineId === lineId &&
         c.shiftKey === shiftKey &&
-        c.rejectTypeId === rejectTypeId &&
+        c.rejectTypeId === l3Id &&
         (!machineCode || c.machineCode === machineCode) &&
         c.hourIdx >= 0 &&
         c.hourIdx < 8
       ) {
-        const l2 =
-          c.l2Id ?? rejectConfigStore.defaultL2(c.plantId, c.lineId, c.machineCode, c.rejectTypeId);
-        current[l2][c.hourIdx] = (current[l2][c.hourIdx] ?? 0) + c.delta;
+        current[c.hourIdx] = (current[c.hourIdx] ?? 0) + c.delta;
       }
     }
     return { actual, current };
   },
 
-  /** Hourly series for the chart (bars = Current, dashed = Actual), optionally for one L2. */
-  getHourlySeries(
-    plantId: string,
-    lineId: string,
-    shiftKey: string,
-    rejectTypeId: string,
-    machineCode?: string,
-    l2Id?: L2Id,
-  ) {
-    const by = this.getHourlyByL2(plantId, lineId, shiftKey, rejectTypeId, machineCode);
-    const keys = l2Id ? [l2Id] : L2_KEYS;
-    const sum = (src: Record<L2Id, number[]>, clamp: boolean) =>
-      Array.from({ length: 8 }, (_, h) => {
-        const total = keys.reduce((acc, k) => acc + (src[k][h] ?? 0), 0);
-        return clamp ? Math.max(0, total) : total;
-      });
-    return { actual: sum(by.actual, false), current: sum(by.current, true) };
+  /** Hourly series for the chart (bars = Current, dashed = Actual) of one entry. */
+  getHourlySeries(plantId: string, lineId: string, shiftKey: string, l3Id: string, machineCode?: string) {
+    const by = this.getHourly(plantId, lineId, shiftKey, l3Id, machineCode);
+    return { actual: by.actual, current: by.current.map((v) => Math.max(0, v)) };
   },
 
   /**
-   * Reject (not rework) Current per L2 and per L3 for one machine, straight from the same logs
-   * getTotals uses, so chips, cards and every KPI agree. "other" = L3 without a card.
+   * Reject (not rework) Current per L2 and per card entry for one machine, straight from the same
+   * logs getTotals uses. byL2 and total are the sums of the CARDS (configured slots); anything logged
+   * under an entry without a card (slot removed later) is reported as inactiveTotal so it stays visible.
    */
-  getCategoryTotals(plantId: string, lineId: string, shiftKey: string, machineCode: string) {
+  getL2Totals(plantId: string, lineId: string, shiftKey: string, machineCode: string) {
     const logs = this.getAllLogs(plantId, lineId, shiftKey).filter(
       (l) => l.machineCode === machineCode && l.category !== "Rework",
     );
@@ -434,32 +438,17 @@ export const rejectStore = {
       rejectConfigStore.getCards(plantId, lineId, machineCode).map((c) => c.l3Id),
     );
     const byL2 = emptyByL2();
-    const byL3: Record<string, Record<L2Id, number>> = {};
-    const other = emptyByL2();
-    const otherByL3: Record<string, { name: string; total: number; byL2: Record<L2Id, number> }> = {};
+    const byL3: Record<string, number> = {};
+    let inactiveTotal = 0;
     for (const l of logs) {
-      byL2[l.l2Id] += l.qty;
       if (cardIds.has(l.l3Id)) {
-        const row = byL3[l.l3Id] ?? emptyByL2();
-        row[l.l2Id] += l.qty;
-        byL3[l.l3Id] = row;
+        byL2[l2OfEntry(l.l3Id)] += l.qty;
+        byL3[l.l3Id] = (byL3[l.l3Id] ?? 0) + l.qty;
       } else {
-        other[l.l2Id] += l.qty;
-        const o = otherByL3[l.l3Id] ?? { name: l.rejectTypeName, total: 0, byL2: emptyByL2() };
-        o.total += l.qty;
-        o.byL2[l.l2Id] += l.qty;
-        otherByL3[l.l3Id] = o;
+        inactiveTotal += l.qty;
       }
     }
-    const total = byL2.RM + byL2.RP + byL2.RS;
-    return {
-      byL2,
-      byL3,
-      other,
-      otherByL3,
-      otherTotal: other.RM + other.RP + other.RS,
-      total,
-    };
+    return { byL2, byL3, total: byL2.RM + byL2.RP + byL2.RS, inactiveTotal };
   },
 
   getCorrections(
@@ -519,30 +508,29 @@ export const rejectStore = {
       c.shiftKey === payload.shiftKey &&
       c.machineCode === payload.machineCode &&
       c.rejectTypeId === payload.l3Id;
-    const l2Of = (c: RejectCorrection): L2Id =>
-      c.l2Id ?? rejectConfigStore.defaultL2(c.plantId, c.lineId, c.machineCode, c.rejectTypeId);
-    const keyOf = (h: number, m: number, l2: L2Id) => `${h}|${m}|${l2}`;
+    const keyOf = (h: number, m: number) => `${h}|${m}`;
+    const l2Id = l2OfEntry(payload.l3Id);
 
     const beforeMap = new Map<string, number>();
     for (const c of state.corrections.filter(sameScope)) {
-      const k = keyOf(c.hourIdx, c.minute, l2Of(c));
+      const k = keyOf(c.hourIdx, c.minute);
       beforeMap.set(k, (beforeMap.get(k) ?? 0) + c.delta);
     }
     const wanted = new Map<string, CorrectionChange>();
-    for (const c of payload.changes) wanted.set(keyOf(c.hourIdx, c.minute, c.l2Id), c);
+    for (const c of payload.changes) wanted.set(keyOf(c.hourIdx, c.minute), c);
     const effective = [...wanted.entries()]
       .map(([k, c]) => ({ k, c, before: beforeMap.get(k) ?? 0 }))
       .filter((e) => e.c.after !== e.before);
     if (effective.length === 0) return { ok: false, errors: ["Tidak ada perubahan nilai."] };
 
     // OP-15: actual + all corrections of an hour never below 0
-    const by = this.getHourlyByL2(payload.plantId, payload.lineId, payload.shiftKey, payload.l3Id, payload.machineCode);
+    const by = this.getHourly(payload.plantId, payload.lineId, payload.shiftKey, payload.l3Id, payload.machineCode);
     const hourBefore: Record<number, number> = {};
     const hourAfter: Record<number, number> = {};
     for (const e of effective) {
       const h = e.c.hourIdx;
       if (hourBefore[h] === undefined) {
-        hourBefore[h] = L2_KEYS.reduce((acc, k) => acc + (by.current[k][h] ?? 0), 0);
+        hourBefore[h] = by.current[h] ?? 0;
         hourAfter[h] = hourBefore[h];
       }
       hourAfter[h] = (hourAfter[h] ?? 0) + (e.c.after - e.before);
@@ -557,7 +545,7 @@ export const rejectStore = {
 
     const touched = new Set(effective.map((e) => e.k));
     state.corrections = state.corrections.filter(
-      (c) => !(sameScope(c) && touched.has(keyOf(c.hourIdx, c.minute, l2Of(c)))),
+      (c) => !(sameScope(c) && touched.has(keyOf(c.hourIdx, c.minute))),
     );
     const now = getNowMs();
     const audit: CorrectionAudit[] = [];
@@ -565,13 +553,13 @@ export const rejectStore = {
       correctionSeq += 1;
       if (e.c.after !== 0) {
         state.corrections.push({
-          id: `corr-${payload.shiftKey}-${payload.l3Id}-${payload.machineCode}-${e.c.hourIdx}-${e.c.minute}-${e.c.l2Id}-${correctionSeq}`,
+          id: `corr-${payload.shiftKey}-${payload.l3Id}-${payload.machineCode}-${e.c.hourIdx}-${e.c.minute}-${correctionSeq}`,
           plantId: payload.plantId,
           lineId: payload.lineId,
           machineCode: payload.machineCode,
           rejectTypeId: payload.l3Id,
           rejectTypeName: payload.l3Name,
-          l2Id: e.c.l2Id,
+          l2Id,
           category: payload.category,
           shiftKey: payload.shiftKey,
           hourIdx: e.c.hourIdx,
@@ -595,7 +583,7 @@ export const rejectStore = {
         machineCode: payload.machineCode,
         l3Id: payload.l3Id,
         l3Name: payload.l3Name,
-        l2Id: e.c.l2Id,
+        l2Id,
         hourIdx: e.c.hourIdx,
         minute: e.c.minute,
         before: e.before,
@@ -677,14 +665,7 @@ export const rejectStore = {
       rejectTypeId: payload.rejectTypeId,
       rejectTypeName: payload.rejectTypeName,
       l3Id: payload.rejectTypeId,
-      l2Id:
-        payload.l2Id ??
-        rejectConfigStore.defaultL2(
-          payload.plantId,
-          payload.lineId,
-          payload.machineCode,
-          payload.rejectTypeId,
-        ),
+      l2Id: l2OfEntry(payload.rejectTypeId, payload.l2Id),
       qty: payload.qty,
       source: "qa",
       at: payload.at,

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, Settings, XCircle } from "lucide-react";
+import { Settings, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { REJECT_L2, rejectConfigStore, type L2Id, type RejectCard } from "@/lib/oee/rejectConfigStore";
@@ -8,7 +8,6 @@ import { formatTimeWib, getNowMs, getShiftInfo } from "@/lib/oee/shiftClock";
 import { getLine } from "@/lib/oee/data";
 import { KonfigurasiDetailModal } from "./KonfigurasiDetailModal";
 import { L2Badge } from "./L2Badge";
-import { RejectLainModal } from "./RejectLainModal";
 
 type MachineRef = { id: string; code?: string; name?: string };
 type Filter = "ALL" | L2Id;
@@ -50,7 +49,6 @@ export function RejectPageContent({
 
   const [filter, setFilter] = useState<Filter>("ALL");
   const [configCard, setConfigCard] = useState<RejectCard | null>(null);
-  const [lainOpen, setLainOpen] = useState(false);
 
   const cards = useMemo(
     () =>
@@ -59,14 +57,14 @@ export function RejectPageContent({
         .filter((c) => c.category === "Reject"),
     [plantId, lineId, machineCode],
   );
-  const totals = rejectStore.getCategoryTotals(plantId, lineId, shiftKey, machineCode);
+  const totals = rejectStore.getL2Totals(plantId, lineId, shiftKey, machineCode);
 
-  // OP-02: a card shows under every L2 it is bound to; OP-05: changing the filter closes the panel.
-  const visible = filter === "ALL" ? cards : cards.filter((c) => c.l2.includes(filter));
+  // One card per slot with one L2; the filter shows the cards of that L2. Changing the filter
+  // closes any open detail panel.
+  const visible = filter === "ALL" ? cards : cards.filter((c) => c.l2 === filter);
   const changeFilter = (f: Filter) => {
     setFilter(f);
     setConfigCard(null);
-    setLainOpen(false);
   };
 
   const chips: { id: Filter; label: string; total: number }[] = [
@@ -125,6 +123,12 @@ export function RejectPageContent({
         ))}
       </div>
 
+      {totals.inactiveTotal > 0 && (
+        <p data-testid="inactive-total" className="text-xs text-muted-foreground">
+          Reject dari slot yang sudah tidak aktif: {totals.inactiveTotal} pcs (tidak ada kartu).
+        </p>
+      )}
+
       {cards.length === 0 && (
         <div className="rounded-lg border border-dashed border-border bg-card p-10 text-center text-xs text-muted-foreground">
           Belum ada slot reject yang di-assign ke mesin {machineCode}.
@@ -142,10 +146,7 @@ export function RejectPageContent({
           );
           const current = series.current.slice(0, currentIdx + 1);
           const actual = series.actual.slice(0, currentIdx + 1);
-          const byL2 = totals.byL3[card.l3Id] ?? { RM: 0, RP: 0, RS: 0 };
-          // OP-07: total = sum over all bound categories
-          const total = card.l2.reduce((acc, l2) => acc + byL2[l2], 0);
-          const multi = card.l2.length > 1;
+          const total = totals.byL3[card.l3Id] ?? 0;
 
           return (
             <Card
@@ -160,11 +161,8 @@ export function RejectPageContent({
                   <XCircle className="mt-0.5 size-5 shrink-0 fill-red-600 text-white" />
                   <div>
                     <h4 className="text-sm font-semibold text-foreground">{card.name}</h4>
-                    {/* OP-06: badge for every bound L2 */}
                     <div className="mt-1 flex gap-1">
-                      {card.l2.map((l2) => (
-                        <L2Badge key={l2} l2={l2} />
-                      ))}
+                      <L2Badge l2={card.l2} />
                     </div>
                     <p className="mt-1 text-red-700">
                       <span data-testid="card-total" className="text-xl font-bold">
@@ -174,12 +172,6 @@ export function RejectPageContent({
                         pcs reject
                       </span>
                     </p>
-                    {/* OP-07 breakdown only when bound to more than one L2 (OP-08) */}
-                    {multi && (
-                      <p data-testid="card-breakdown" className="text-xs text-muted-foreground">
-                        {card.l2.map((l2) => `${l2} ${byL2[l2]}`).join(" | ")}
-                      </p>
-                    )}
                   </div>
                 </div>
                 <Button
@@ -197,55 +189,7 @@ export function RejectPageContent({
           );
         })}
 
-        {/* OP-04: "Reject lain" only under Semua; OP-20: opens the entry form. */}
-        {filter === "ALL" && cards.length > 0 && (
-          <button
-            type="button"
-            data-testid="reject-other-card"
-            onClick={() => setLainOpen(true)}
-            className="flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card p-4 text-center text-muted-foreground transition-colors hover:border-red-300 hover:bg-red-50/40"
-          >
-            <Plus className="size-6" />
-            <p className="mt-1.5 text-sm text-foreground">
-              Reject lain
-              <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800">
-                Baru
-              </span>
-            </p>
-            {totals.otherTotal > 0 && (
-              <>
-                <p data-testid="other-total" className="mt-1 text-sm font-semibold text-red-700">
-                  {totals.otherTotal} pcs reject
-                </p>
-                <ul data-testid="other-list" className="mt-0.5 text-xs">
-                  {Object.entries(totals.otherByL3).map(([id, o]) => (
-                    <li key={id} data-l3={id}>
-                      {o.name}: {o.total} pcs (
-                      {(["RM", "RP", "RS"] as const)
-                        .filter((k) => o.byL2[k] !== 0)
-                        .map((k) => `${k} ${o.byL2[k]}`)
-                        .join(" | ")}
-                      )
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-            <p className="mt-1 max-w-56 text-xs">
-              Pilih kategori (RM, RP, RS) lalu cari reason yang tidak ada di kartu
-            </p>
-          </button>
-        )}
       </div>
-
-      <RejectLainModal
-        open={lainOpen}
-        onOpenChange={setLainOpen}
-        plantId={plantId}
-        lineId={lineId}
-        shiftKey={shiftKey}
-        machineCode={machineCode}
-      />
 
       <KonfigurasiDetailModal
         open={!!configCard}

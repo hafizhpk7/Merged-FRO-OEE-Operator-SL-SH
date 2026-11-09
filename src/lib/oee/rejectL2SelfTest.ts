@@ -1,12 +1,18 @@
 /**
- * Dev self-test for CR 1 part B (reject L2 flag and filter). Run `runRejectL2SelfTest()` in the
- * browser console. It purges everything it writes (corrections, test configuration, snapshots).
+ * Dev self-test for the reject category model (CR 1, review version: every L3 entry belongs to one L2).
+ * Run `runRejectL2SelfTest()` in the browser console. It purges everything it writes.
  */
 import { clearCurrentShiftCache, getMachineShiftTotals } from "./machineShiftTotals";
 import { J2_LINES_CONFIG } from "./j2-layout-config";
 import { getShiftTimeline } from "./machineEvents";
 import { clearMetricsCache, getMetrics } from "./metrics-engine";
-import { getL3Bindings, getLineMachineCodesForConfig, rejectConfigStore, type L2Id } from "./rejectConfigStore";
+import { entryId, getEntriesForL2, getEntry, migrateL3, REJECT_TYPES } from "./rejectConfig";
+import {
+  getLineMachineCodesForConfig,
+  migrateSlot,
+  rejectConfigStore,
+  type L2Id,
+} from "./rejectConfigStore";
 import { _forgetSlotSnapshot, rejectStore } from "./rejectStore";
 import { getNowMs, getShiftInfo } from "./shiftClock";
 
@@ -24,106 +30,121 @@ export function runRejectL2SelfTest(): { passed: boolean; results: Check[] } {
   const shift = getShiftInfo();
   const shiftKey = shift.shiftKey;
   const pastKey = "2000-01-01:A"; // never a real shift: used for the history check
-  const touchedCorrections: { line: string; machine: string; l3: string }[] = [];
-  let configTouched: { line: string; machine: string } | null = null;
+  let correctionsTouched = false;
+  let configTouched = false;
 
   try {
-    // ---- configuration: one slot per (L2, L3), unique per machine (MD-01, MD-08, MD-09) --------
-    let multiSeen = false;
-    let singleSeen = false;
+    // ---- master: one L2 per entry, unique ids, same label separate entries ----------------------
+    const ids = REJECT_TYPES.map((t) => t.id);
+    check("entry ids are unique", new Set(ids).size === ids.length);
+    check(
+      "every Reject entry has exactly one L2 and its id carries it",
+      REJECT_TYPES.filter((t) => t.category === "Reject").every((t) => !!t.l2 && t.id.startsWith(`${t.l2!.toLowerCase()}.`)),
+    );
+    const labelL2s = new Map<string, Set<L2Id>>();
+    for (const t of REJECT_TYPES) if (t.l2) (labelL2s.get(t.name) ?? labelL2s.set(t.name, new Set()).get(t.name)!).add(t.l2);
+    const multiLabels = [...labelL2s.entries()].filter(([, s]) => s.size > 1).map(([n]) => n);
+    check("labels needed under several L2s are separate entries (same label, different ids)", multiLabels.length >= 3, multiLabels.join(", "));
+    check("L3 picker is restricted to the chosen L2", L2S.every((l2) => getEntriesForL2(l2).every((e) => e.l2 === l2)));
+
+    // ---- configuration -------------------------------------------------------------------------
     let allUnique = true;
     let allAssigned = true;
-    let bindingsMatch = true;
+    let oneL2 = true;
     for (const line of PILOT_LINES) {
       for (const m of getLineMachineCodesForConfig(PLANT, line)) {
         const slots = rejectConfigStore.getSlots(PLANT, line, m);
         const statuses = rejectConfigStore.validate(slots);
-        if (statuses.some((s) => s.status === "Duplikat")) allUnique = false;
+        if (statuses.some((s) => s.status === "Duplicate")) allUnique = false;
         if (statuses.some((s) => s.status !== "Assigned")) allAssigned = false;
-        for (const c of rejectConfigStore.getCards(PLANT, line, m)) {
-          if (c.l2.length > 1) multiSeen = true;
-          else singleSeen = true;
-          if (c.l2.join() !== getL3Bindings(c.l3Id).join()) bindingsMatch = false;
-        }
+        for (const c of rejectConfigStore.getCards(PLANT, line, m)) if (getEntry(c.l3Id)?.l2 !== c.l2) oneL2 = false;
       }
     }
-    check("slots are unique per (L2, L3) on every pilot machine", allUnique);
-    check("every default slot is Assigned (L2 and L3 complete)", allAssigned);
-    check("a reason bound to several L2s gets one slot per L2", multiSeen && bindingsMatch);
-    check("single-L2 reasons exist too", singleSeen);
+    check("default slots are unique per (machine, L2, L3) and Assigned", allUnique && allAssigned);
+    check("every card has one L2 matching its entry", oneL2);
+
+    const L = PILOT_LINES[0] ?? "TUP01";
+    const dup = rejectConfigStore.saveSlots(PLANT, L, "ZZ", [
+      { slotNo: 1, l2Id: "RM", l3Id: entryId("RM", "reject-seal") },
+      { slotNo: 2, l2Id: "RM", l3Id: entryId("RM", "reject-seal") },
+    ]);
+    const half = rejectConfigStore.saveSlots(PLANT, L, "ZZ", [{ slotNo: 1, l2Id: null, l3Id: entryId("RM", "reject-seal") }]);
+    const wrongL2 = rejectConfigStore.saveSlots(PLANT, L, "ZZ", [{ slotNo: 1, l2Id: "RS", l3Id: entryId("RM", "reject-seal") }]);
+    check("duplicates, half-filled and wrong-L2 slots are rejected on save", !dup.ok && !half.ok && !wrongL2.ok);
     check(
-      "duplicate (L2, L3) and half-filled slots are rejected on save (MD-06, MD-08)",
-      (() => {
-        const dup = rejectConfigStore.saveSlots(PLANT, PILOT_LINES[0] ?? "TUP01", "ZZ", [
-          { slotNo: 1, l2Id: "RM", l3Id: "reject-seal" },
-          { slotNo: 2, l2Id: "RM", l3Id: "reject-seal" },
-        ]);
-        const half = rejectConfigStore.saveSlots(PLANT, PILOT_LINES[0] ?? "TUP01", "ZZ", [
-          { slotNo: 1, l2Id: null, l3Id: "reject-seal" },
-        ]);
-        return !dup.ok && !half.ok;
-      })(),
+      "duplicate slot is reported with status Duplicate",
+      rejectConfigStore.validate([
+        { slotNo: 1, l2Id: "RM", l3Id: entryId("RM", "reject-seal") },
+        { slotNo: 2, l2Id: "RM", l3Id: entryId("RM", "reject-seal") },
+      ])[1]?.status === "Duplicate",
     );
 
-    // ---- sensor input split by slot ----------------------------------------------------------
-    let splitMachine: { line: string; machine: string; l3: string; l2: L2Id[] } | null = null;
-    for (const line of PILOT_LINES) {
-      for (const m of getLineMachineCodesForConfig(PLANT, line)) {
-        const multi = rejectConfigStore.getCards(PLANT, line, m).find((c) => c.l2.length > 1);
-        if (multi && !splitMachine) splitMachine = { line, machine: m, l3: multi.l3Id, l2: multi.l2 };
-      }
-    }
-    check("a machine with a multi-L2 reason exists", !!splitMachine);
-    if (splitMachine) {
-      const logs = rejectStore
-        .getAllLogs(PLANT, splitMachine.line, pastKey)
-        .filter((l) => l.machineCode === splitMachine!.machine && l.l3Id === splitMachine!.l3);
-      const byL2: Record<L2Id, number> = { RM: 0, RP: 0, RS: 0 };
-      for (const l of logs) byL2[l.l2Id] += l.qty;
-      const used = L2S.filter((k) => byL2[k] > 0);
-      check(
-        "sensor entries carry l2Id/l3Id and only land in bound L2s",
-        logs.length > 0 && logs.every((l) => !!l.l2Id && l.l3Id === splitMachine!.l3 && splitMachine!.l2.includes(l.l2Id)),
-      );
-      check(
-        "multi-L2 reason splits its sensor input across slots (>= 2 categories used)",
-        used.length >= 2,
-        `RM ${byL2.RM} | RP ${byL2.RP} | RS ${byL2.RS}`,
-      );
-      check(
-        "split adds up to the reason total",
-        byL2.RM + byL2.RP + byL2.RS === logs.reduce((a, l) => a + l.qty, 0),
-      );
+    // ---- same label under RM and RS = two slots, two entries, two cards -------------------------
+    const mc = getLineMachineCodesForConfig(PLANT, L)[0] ?? "LCM07";
+    configTouched = true;
+    const two = rejectConfigStore.saveSlots(PLANT, L, mc, [
+      { slotNo: 1, l2Id: "RM", l3Id: entryId("RM", "penyok") },
+      { slotNo: 2, l2Id: "RS", l3Id: entryId("RS", "penyok") },
+    ]);
+    const cards = rejectConfigStore.getCards(PLANT, L, mc);
+    check("two slots with the same label under RM and RS give two cards", two.ok && cards.length === 2 && cards[0]?.name === cards[1]?.name && cards[0]?.l3Id !== cards[1]?.l3Id);
+    const t = rejectStore.getL2Totals(PLANT, L, shiftKey, mc);
+    const a = cards[0]?.l3Id ?? "";
+    const b = cards[1]?.l3Id ?? "";
+    check("each card has its own total", (t.byL3[a] ?? 0) + (t.byL3[b] ?? 0) === t.total);
 
-      // ---- history is frozen when the configuration changes (3.1) --------------------------
-      const before = JSON.stringify(
-        rejectStore.getAllLogs(PLANT, splitMachine.line, pastKey).map((l) => [l.id, l.l2Id, l.qty]),
-      );
-      configTouched = { line: splitMachine.line, machine: splitMachine.machine };
-      const only = rejectConfigStore.getSlots(PLANT, splitMachine.line, splitMachine.machine).filter(
-        (s) => !(s.l3Id === splitMachine!.l3 && s.l2Id !== "RM"),
-      );
-      const saved = rejectConfigStore.saveSlots(PLANT, splitMachine.line, splitMachine.machine, only);
-      const after = JSON.stringify(
-        rejectStore.getAllLogs(PLANT, splitMachine.line, pastKey).map((l) => [l.id, l.l2Id, l.qty]),
-      );
-      check("configuration change saved", saved.ok);
-      check("historical (closed shift) entries do not change when the configuration changes", before === after);
-      const cardNow = rejectConfigStore
-        .getCards(PLANT, splitMachine.line, splitMachine.machine)
-        .find((c) => c.l3Id === splitMachine!.l3);
-      check("the live card follows the new configuration (single L2 now)", cardNow?.l2.join() === "RM");
-      rejectConfigStore._resetForTest();
-      configTouched = null;
+    // correction on one card does not touch the sibling
+    const sa = rejectStore.getHourly(PLANT, L, shiftKey, a, mc);
+    const hour = sa.current.findIndex((v, h) => v >= 1 && h < 7);
+    if (hour >= 0) {
+      const sibBefore = rejectStore.getHourly(PLANT, L, shiftKey, b, mc).current.join();
+      const res = rejectStore.saveCorrections({
+        plantId: PLANT, lineId: L, shiftKey, machineCode: mc, l3Id: a, l3Name: cards[0]?.name ?? "",
+        category: "Reject", operator: "Self-test", reason: "Self-test", leader: "Self-test",
+        changes: [{ hourIdx: hour, minute: 0, after: -1 }],
+      });
+      correctionsTouched = true;
+      const t1 = rejectStore.getL2Totals(PLANT, L, shiftKey, mc);
+      check("correction saves", res.ok);
+      check("a correction on one card does not change the sibling card of the same label", rejectStore.getHourly(PLANT, L, shiftKey, b, mc).current.join() === sibBefore && (t1.byL3[b] ?? 0) === (t.byL3[b] ?? 0));
+      check("the corrected card and its L2 chip drop by 1", (t1.byL3[a] ?? 0) === (t.byL3[a] ?? 0) - 1 && t1.byL2[cards[0]!.l2] === t.byL2[cards[0]!.l2] - 1);
+      const stored = rejectStore.getCorrections(PLANT, L, shiftKey, a, mc).filter((c) => c.operator === "Self-test");
+      check("correction is keyed by (l2Id, l3Id)", stored.length === 1 && stored[0]?.l2Id === cards[0]?.l2);
+    } else {
+      check("a card with data exists for the sibling check", false);
     }
 
-    // ---- chips, cards and KPIs agree everywhere (OP-01..OP-08, parity) ---------------------
-    // machine codes repeat across lines (LBF, LBC, SHR, ...): metrics-engine resolves a machine
-    // code to its first line, so it is only compared on that owner line.
+    // chip totals = sum of the cards of that L2; Semua = all cards
+    const t2 = rejectStore.getL2Totals(PLANT, L, shiftKey, mc);
+    const sumCards = (l2?: L2Id) =>
+      rejectConfigStore.getCards(PLANT, L, mc).filter((c) => !l2 || c.l2 === l2).reduce((x, c) => x + (t2.byL3[c.l3Id] ?? 0), 0);
+    check("chip total of an L2 = sum of its cards; Semua = all cards", L2S.every((k) => t2.byL2[k] === sumCards(k)) && t2.total === sumCards());
+    rejectConfigStore._resetForTest();
+    configTouched = false;
+
+    // ---- migration ---------------------------------------------------------------------------
+    const sealRm = migrateSlot({ slotNo: 1, l2Id: "RM", l3Id: "reject-seal" });
+    check("legacy slot with explicit L2 keeps it; L3 becomes the entry under that L2", sealRm.l2Id === "RM" && sealRm.l3Id === "rm.reject-seal");
+    const noL2Single = migrateSlot({ slotNo: 1, l2Id: null, l3Id: "reject-leak" });
+    check("legacy slot without L2 takes the L2 of its single binding", noL2Single.l2Id === "RM" && noL2Single.l3Id === "rm.reject-leak");
+    const noL2Multi = migrateSlot({ slotNo: 1, l2Id: null, l3Id: "reject-seal" });
+    check("ambiguous legacy slot becomes Unassigned", noL2Multi.l2Id === null && noL2Multi.l3Id === null);
+    check("migrated ids are stable (idempotent)", migrateL3("rs.reject-seal", "RS")?.id === "rs.reject-seal");
+    check("history keeps its explicit L2", migrateL3("baret", "RS")?.id === "rs.baret");
+
+    // ---- sensor input per card / history frozen -------------------------------------------------
+    const before = JSON.stringify(rejectStore.getAllLogs(PLANT, L, pastKey).map((l) => [l.id, l.l2Id, l.qty]));
+    configTouched = true;
+    rejectConfigStore.saveSlots(PLANT, L, mc, [{ slotNo: 1, l2Id: "RP", l3Id: entryId("RP", "baret") }]);
+    const after = JSON.stringify(rejectStore.getAllLogs(PLANT, L, pastKey).map((l) => [l.id, l.l2Id, l.qty]));
+    check("historical (closed shift) entries do not change when the configuration changes", before === after);
+    rejectConfigStore._resetForTest();
+    configTouched = false;
+
+    // ---- chips, cards and KPIs agree everywhere -------------------------------------------------
     const owner = new Map<string, string>();
     for (const l of J2_LINES_CONFIG) for (const mm of l.machines) if (mm.code && !owner.has(mm.code)) owner.set(mm.code, l.code);
     let metricsSkipped = 0;
-    // These caches are cleared by a store subscription in the browser only; clear them for Node runs.
     clearCurrentShiftCache();
     clearMetricsCache();
     let machinesChecked = 0;
@@ -135,19 +156,13 @@ export function runRejectL2SelfTest(): { passed: boolean; results: Check[] } {
     for (const line of PILOT_LINES) {
       for (const m of getLineMachineCodesForConfig(PLANT, line)) {
         machinesChecked += 1;
-        const t = rejectStore.getCategoryTotals(PLANT, line, shiftKey, m);
+        const tt = rejectStore.getL2Totals(PLANT, line, shiftKey, m);
         const totalReject = rejectStore.getTotals(PLANT, line, shiftKey, m).totalReject;
-        if (t.byL2.RM + t.byL2.RP + t.byL2.RS !== t.total || t.total !== totalReject) chipsOk = false;
-        const cardSum = Object.values(t.byL3).reduce((a, r) => a + r.RM + r.RP + r.RS, 0) + t.otherTotal;
-        if (cardSum !== t.total) cardsOk = false;
+        if (tt.byL2.RM + tt.byL2.RP + tt.byL2.RS !== tt.total || tt.total + tt.inactiveTotal !== totalReject) chipsOk = false;
+        if (Object.values(tt.byL3).reduce((x, v) => x + v, 0) !== tt.total) cardsOk = false;
         for (const c of rejectConfigStore.getCards(PLANT, line, m)) {
           const series = rejectStore.getHourlySeries(PLANT, line, shiftKey, c.l3Id, m);
-          const row = t.byL3[c.l3Id] ?? { RM: 0, RP: 0, RS: 0 };
-          const cardTotal = row.RM + row.RP + row.RS;
-          if (series.current.reduce((a, b) => a + b, 0) !== cardTotal) cardsOk = false;
-          // OP-07 total is the sum over bound categories only (no stray category)
-          const stray = L2S.filter((k) => !c.l2.includes(k)).reduce((a, k) => a + row[k], 0);
-          if (stray !== 0) cardsOk = false;
+          if (series.current.reduce((x, v) => x + v, 0) !== (tt.byL3[c.l3Id] ?? 0)) cardsOk = false;
         }
         if (totalReject > 0) {
           const tl = getShiftTimeline(m, shift, undefined, PLANT, "this-shift", line);
@@ -164,57 +179,14 @@ export function runRejectL2SelfTest(): { passed: boolean; results: Check[] } {
     }
     check("pilot machines covered", machinesChecked >= 5, `${machinesChecked} machines`);
     check("chip totals add up (RM + RP + RS = Semua = machine total reject)", chipsOk);
-    check("card totals add up (sum of cards + Reject lain = Semua; card = bound categories)", cardsOk);
+    check("card totals add up (sum of cards = Semua; card = hourly Current)", cardsOk);
     check(
       "KPI parity: Reason/OEE strip, SL/SH Machine Output and metrics use the same total",
       kpiOk,
       kpiDetail || `metrics-engine skipped on ${metricsSkipped} non-owner duplicate machine code(s)`,
     );
-
-    // ---- a correction on one L2 moves only that L2 ----------------------------------------------
-    outer: for (const line of PILOT_LINES) {
-      for (const m of getLineMachineCodesForConfig(PLANT, line)) {
-        const card = rejectConfigStore.getCards(PLANT, line, m).find((c) => c.l2.length > 1);
-        if (!card) continue;
-        const by = rejectStore.getHourlyByL2(PLANT, line, shiftKey, card.l3Id, m);
-        const target = card.l2.find((l2) => by.current[l2].some((v, h) => v >= 1 && h < 7));
-        if (!target) continue;
-        const hour = by.current[target].findIndex((v, h) => v >= 1 && h < 7);
-        const t0 = rejectStore.getCategoryTotals(PLANT, line, shiftKey, m);
-        const kpi0 = rejectStore.getTotals(PLANT, line, shiftKey, m).totalReject;
-        rejectStore.saveCorrections({
-          plantId: PLANT,
-          lineId: line,
-          shiftKey,
-          machineCode: m,
-          l3Id: card.l3Id,
-          l3Name: card.name,
-          category: "Reject",
-          operator: "Self-test",
-          reason: "Self-test",
-          leader: "Self-test",
-          changes: [{ hourIdx: hour, minute: 0, l2Id: target, after: -1 }],
-        });
-        touchedCorrections.push({ line, machine: m, l3: card.l3Id });
-        const t1 = rejectStore.getCategoryTotals(PLANT, line, shiftKey, m);
-        const kpi1 = rejectStore.getTotals(PLANT, line, shiftKey, m).totalReject;
-        const others = L2S.filter((k) => k !== target);
-        check(
-          "correction on one L2 lowers only that L2 chip",
-          t1.byL2[target] === t0.byL2[target] - 1 && others.every((k) => t1.byL2[k] === t0.byL2[k]),
-          `${target}: ${t0.byL2[target]} -> ${t1.byL2[target]}`,
-        );
-        check("the same correction lowers the card total and the KPI total by 1", kpi1 === kpi0 - 1 &&
-          (t1.byL3[card.l3Id] ? Object.values(t1.byL3[card.l3Id]!).reduce((a, b) => a + b, 0) : 0) ===
-            Object.values(t0.byL3[card.l3Id] ?? {}).reduce((a, b) => a + b, 0) - 1);
-        const stored = rejectStore.getCorrections(PLANT, line, shiftKey, card.l3Id, m).filter((c) => c.operator === "Self-test");
-        check("the correction stores its L2 explicitly", stored.length === 1 && stored[0]?.l2Id === target);
-        break outer;
-      }
-    }
-    check("a multi-L2 card with data exists for the correction check", touchedCorrections.length > 0);
   } finally {
-    if (touchedCorrections.length) rejectStore._purgeByOperator("Self-test");
+    if (correctionsTouched) rejectStore._purgeByOperator("Self-test");
     if (configTouched) rejectConfigStore._resetForTest();
     for (const line of PILOT_LINES) _forgetSlotSnapshot(PLANT, line, pastKey);
   }

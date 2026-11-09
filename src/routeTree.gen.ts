@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShiftPerformanceRouteImport } from './routes/shift-performance'
+import { Route as MasterRejectConfigRouteImport } from './routes/master.reject-config'
 import { Route as AnalyticsIndexRouteImport } from './routes/analytics.index'
 import { Route as AnalyticsLossTreeRouteImport } from './routes/analytics.loss-tree'
 import { Route as AnalyticsParetoRouteImport } from './routes/analytics.pareto'
@@ -37,6 +38,11 @@ const IndexRoute = IndexRouteImport.update({
 const ShiftPerformanceRoute = ShiftPerformanceRouteImport.update({
   id: '/shift-performance',
   path: '/shift-performance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MasterRejectConfigRoute = MasterRejectConfigRouteImport.update({
+  id: '/master/reject-config',
+  path: '/master/reject-config',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AnalyticsIndexRoute = AnalyticsIndexRouteImport.update({
@@ -130,6 +136,7 @@ const DevIsoBop15Route = DevIsoBop15RouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/shift-performance': typeof ShiftPerformanceRoute
+  '/master/reject-config': typeof MasterRejectConfigRoute
   '/analytics/loss-tree': typeof AnalyticsLossTreeRoute
   '/analytics/pareto': typeof AnalyticsParetoRoute
   '/analytics/': typeof AnalyticsIndexRoute
@@ -151,6 +158,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/shift-performance': typeof ShiftPerformanceRoute
+  '/master/reject-config': typeof MasterRejectConfigRoute
   '/analytics/loss-tree': typeof AnalyticsLossTreeRoute
   '/analytics/pareto': typeof AnalyticsParetoRoute
   '/analytics': typeof AnalyticsIndexRoute
@@ -173,6 +181,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/shift-performance': typeof ShiftPerformanceRoute
+  '/master/reject-config': typeof MasterRejectConfigRoute
   '/analytics/loss-tree': typeof AnalyticsLossTreeRoute
   '/analytics/pareto': typeof AnalyticsParetoRoute
   '/analytics/': typeof AnalyticsIndexRoute
@@ -196,6 +205,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/shift-performance'
+    | '/master/reject-config'
     | '/analytics/loss-tree'
     | '/analytics/pareto'
     | '/analytics/'
@@ -217,6 +227,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/shift-performance'
+    | '/master/reject-config'
     | '/analytics/loss-tree'
     | '/analytics/pareto'
     | '/analytics'
@@ -238,6 +249,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/shift-performance'
+    | '/master/reject-config'
     | '/analytics/loss-tree'
     | '/analytics/pareto'
     | '/analytics/'
@@ -260,6 +272,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ShiftPerformanceRoute: typeof ShiftPerformanceRoute
+  MasterRejectConfigRoute: typeof MasterRejectConfigRoute
   AnalyticsLossTreeRoute: typeof AnalyticsLossTreeRoute
   AnalyticsParetoRoute: typeof AnalyticsParetoRoute
   AnalyticsIndexRoute: typeof AnalyticsIndexRoute
@@ -293,6 +306,13 @@ declare module '@tanstack/react-router' {
       path: '/shift-performance'
       fullPath: '/shift-performance'
       preLoaderRoute: typeof ShiftPerformanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/master/reject-config': {
+      id: '/master/reject-config'
+      path: '/master/reject-config'
+      fullPath: '/master/reject-config'
+      preLoaderRoute: typeof MasterRejectConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/analytics/': {
@@ -420,6 +440,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ShiftPerformanceRoute: ShiftPerformanceRoute,
+  MasterRejectConfigRoute: MasterRejectConfigRoute,
   AnalyticsLossTreeRoute: AnalyticsLossTreeRoute,
   AnalyticsParetoRoute: AnalyticsParetoRoute,
   AnalyticsIndexRoute: AnalyticsIndexRoute,

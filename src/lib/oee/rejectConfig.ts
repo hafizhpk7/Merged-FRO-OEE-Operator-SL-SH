@@ -9,26 +9,86 @@ export type RejectSlot = {
   category?: "Reject" | "Rework";
 };
 
+export type L2Id = "RM" | "RP" | "RS";
+export const L2_IDS: L2Id[] = ["RM", "RP", "RS"];
+
+/** One reject L3 entry in the loss tree master (Quality > Reject > L2 > L3). */
 export type RejectTypeItem = {
+  /** Unique by path: "<l2 lower case>.<base>", e.g. "rm.reject-seal". "rework" has no L2. */
   id: string;
   name: string;
   category: "Reject" | "Rework";
+  /** The one L2 this entry sits under (CR 1 review change: every L3 belongs to exactly one L2). */
+  l2?: L2Id;
 };
 
+/** Reject labels of the mock master. A label needed under another L2 is a separate entry (own id). */
+const REJECT_BASES: { base: string; name: string; l2: L2Id[] }[] = [
+  { base: "reject-seal", name: "Reject seal", l2: ["RM", "RP", "RS"] },
+  { base: "reject-leak", name: "Reject Leak", l2: ["RM"] },
+  { base: "reject-cap", name: "Reject Cap", l2: ["RM", "RP"] },
+  { base: "reject-label", name: "Reject Label", l2: ["RP", "RS"] },
+  { base: "reject-print", name: "Reject Print", l2: ["RP"] },
+  { base: "reject-dent", name: "Reject Dent", l2: ["RM"] },
+  { base: "netto-kurang", name: "Netto kurang", l2: ["RP"] },
+  { base: "penyok", name: "Penyok", l2: ["RM", "RS"] },
+  { base: "baret", name: "Baret", l2: ["RP", "RS"] },
+  { base: "bintik", name: "Bintik", l2: ["RP"] },
+  { base: "miring", name: "Miring", l2: ["RM"] },
+];
+
+export const entryId = (l2: L2Id, base: string) => `${l2.toLowerCase()}.${base}`;
+
 export const REJECT_TYPES: RejectTypeItem[] = [
-  { id: "reject-seal", name: "Reject seal", category: "Reject" },
-  { id: "reject-leak", name: "Reject Leak", category: "Reject" },
-  { id: "reject-cap", name: "Reject Cap", category: "Reject" },
-  { id: "reject-label", name: "Reject Label", category: "Reject" },
-  { id: "reject-print", name: "Reject Print", category: "Reject" },
-  { id: "reject-dent", name: "Reject Dent", category: "Reject" },
-  { id: "netto-kurang", name: "Netto kurang", category: "Reject" },
-  { id: "penyok", name: "Penyok", category: "Reject" },
-  { id: "baret", name: "Baret", category: "Reject" },
-  { id: "bintik", name: "Bintik", category: "Reject" },
-  { id: "miring", name: "Miring", category: "Reject" },
+  ...REJECT_BASES.flatMap((b) =>
+    b.l2.map((l2) => ({ id: entryId(l2, b.base), name: b.name, category: "Reject" as const, l2 })),
+  ),
   { id: "rework", name: "Rework", category: "Rework" },
 ];
+
+/** Entries (Reject only) under one L2, for the Master Data picker (L2 first, then L3). */
+export function getEntriesForL2(l2: L2Id): RejectTypeItem[] {
+  return REJECT_TYPES.filter((t) => t.category === "Reject" && t.l2 === l2);
+}
+
+export function getEntry(id: string): RejectTypeItem | undefined {
+  return REJECT_TYPES.find((t) => t.id === id);
+}
+
+/** Entry id -> { l2, base } even when the entry is no longer in the master (history). */
+export function parseEntryId(id: string): { l2: L2Id; base: string } | null {
+  const m = /^(rm|rp|rs).(.+)$/.exec(id);
+  return m ? { l2: (m[1] as string).toUpperCase() as L2Id, base: m[2] as string } : null;
+}
+
+export function entryName(id: string): string {
+  const e = getEntry(id);
+  if (e) return e.name;
+  const p = parseEntryId(id);
+  if (p) return REJECT_BASES.find((b) => b.base === p.base)?.name ?? id;
+  return REJECT_BASES.find((b) => b.base === id)?.name ?? id;
+}
+
+/**
+ * Migration helper: a pre-review L3 id (one id bound to several L2s) becomes the entry under one L2.
+ * Explicit l2 wins (history keeps it); else the single legacy binding; else null (ambiguous).
+ */
+export function migrateL3(id: string, l2?: L2Id | null): { id: string; l2: L2Id } | null {
+  if (parseEntryId(id)) return { id, l2: parseEntryId(id)!.l2 };
+  const b = REJECT_BASES.find((x) => x.base === id);
+  if (!b) return null;
+  if (l2) return { id: entryId(l2, b.base), l2 };
+  const only = b.l2.length === 1 ? b.l2[0] : undefined;
+  return only ? { id: entryId(only, b.base), l2: only } : null;
+}
+
+/** First legacy binding of an old id (read side for history that has no L2 at all). */
+export function legacyFirstL2(id: string): L2Id {
+  return REJECT_BASES.find((b) => b.base === id)?.l2[0] ?? "RM";
+}
+
+/** Old L3-only slot mocks (pre-review) use these base labels. */
+export const LEGACY_SLOT_BASES = REJECT_BASES.map((b) => ({ id: b.base, name: b.name, l2: b.l2 }));
 
 /** Mock operator master for the "Nama operator" picker (real list comes from Master Data). */
 export const MOCK_OPERATORS: string[] = [
@@ -48,7 +108,7 @@ export function getRejectSlots(plantId: string, lineId: string): RejectSlot[] {
   ];
   const machineCodes = machines.map((m) => m.code);
 
-  const activeRejectTypes = REJECT_TYPES.filter((t) => t.category === "Reject");
+  const activeRejectTypes = LEGACY_SLOT_BASES;
 
   return [
     {

@@ -55,7 +55,7 @@ export function OperatorDashboardContent({
         plantId,
         lineId,
         machineCode: "LCM07",
-        rejectTypeId: "reject-seal",
+        rejectTypeId: "rm.reject-seal",
         rejectTypeName: "Reject seal (QA)",
         qty: 1,
         at: Math.floor(Date.now() / 1000),

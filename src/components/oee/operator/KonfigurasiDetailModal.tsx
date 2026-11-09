@@ -11,21 +11,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MOCK_OPERATORS } from "@/lib/oee/rejectConfig";
-import { rejectConfigStore, type L2Id, type RejectCard } from "@/lib/oee/rejectConfigStore";
+import type { RejectCard } from "@/lib/oee/rejectConfigStore";
 import { rejectStore, useRejectStore, type CorrectionChange } from "@/lib/oee/rejectStore";
 import { formatTimeWib, getNowMs, getShiftInfo } from "@/lib/oee/shiftClock";
 import { L2Badge } from "./L2Badge";
 
-type Row = { key: string; minute: number; q: Partial<Record<L2Id, number>>; del: boolean };
+type Row = { key: string; minute: number; q: number; del: boolean };
 
-const ALL_L2: L2Id[] = ["RM", "RP", "RS"];
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
 
 /**
- * "Konfigurasi Detail" (CR 1 OP-10..OP-19): the operator corrects the reject of one reason (L3)
- * per hour and minute. Current = actual + corrections over all categories; Actual stays the
- * sensor value. Every save needs a reason and a leader name and is written to the audit trail.
+ * "Konfigurasi Detail" (CR 1 OP-10..OP-19, review version): the operator corrects the reject of one
+ * card (one L2 + one L3 entry) per hour and minute, one Qty per row. Current = actual +
+ * corrections; Actual stays the sensor value. Every save needs a reason and a leader name and is written to the audit trail.
  */
 export function KonfigurasiDetailModal({
   open,
@@ -58,16 +57,7 @@ export function KonfigurasiDetailModal({
 
   const l3Id = card?.l3Id ?? "";
   const saved = card ? rejectStore.getCorrections(plantId, lineId, shiftKey, l3Id, machineCode) : [];
-  const by = card ? rejectStore.getHourlyByL2(plantId, lineId, shiftKey, l3Id, machineCode) : null;
-
-  const l2OfSaved = (c: { l2Id?: L2Id; machineCode: string; rejectTypeId: string }): L2Id =>
-    c.l2Id ?? rejectConfigStore.defaultL2(plantId, lineId, c.machineCode, c.rejectTypeId);
-
-  // Columns: the bound categories, plus any category an older correction was stored under.
-  const cols: L2Id[] = card
-    ? ALL_L2.filter((k) => card.l2.includes(k) || saved.some((c) => l2OfSaved(c) === k))
-    : [];
-  const multi = cols.length > 1;
+  const by = card ? rejectStore.getHourly(plantId, lineId, shiftKey, l3Id, machineCode) : null;
 
   const buildRows = (): Record<number, Row[]> => {
     const out: Record<number, Row[]> = {};
@@ -76,12 +66,11 @@ export function KonfigurasiDetailModal({
       const k = `${c.hourIdx}|${c.minute}`;
       let row = byKey.get(k);
       if (!row) {
-        row = { key: `s-${k}`, minute: c.minute, q: {}, del: false };
+        row = { key: `s-${k}`, minute: c.minute, q: 0, del: false };
         byKey.set(k, row);
         (out[c.hourIdx] ??= []).push(row);
       }
-      const l2 = l2OfSaved(c);
-      row.q[l2] = (row.q[l2] ?? 0) + c.delta;
+      row.q += c.delta;
     }
     for (const list of Object.values(out)) list.sort((a, b) => a.minute - b.minute);
     return out;
@@ -116,31 +105,25 @@ export function KonfigurasiDetailModal({
   if (!card || !by) return null;
 
   const hourLabel = (h: number) => formatTimeWib(shift.startSec + h * 3600);
-  const actualH = (h: number) => ALL_L2.reduce((s, k) => s + (by.actual[k][h] ?? 0), 0);
+  const actualH = (h: number) => by.actual[h] ?? 0;
   const rowsOf = (h: number): Row[] => rows[h] ?? [];
-  const qOf = (r: Row, k: L2Id) => r.q[k] ?? 0;
-  const netH = (h: number) =>
-    rowsOf(h).reduce((s, r) => (r.del ? s : s + cols.reduce((a, k) => a + qOf(r, k), 0)), 0);
+  const netH = (h: number) => rowsOf(h).reduce((s, r) => (r.del ? s : s + r.q), 0);
   const savedNet = (h: number) => saved.filter((c) => c.hourIdx === h).reduce((s, c) => s + c.delta, 0);
   // Current of an hour without any stored correction, then with the edits in the form
-  const baseCurrent = (h: number) =>
-    ALL_L2.reduce((s, k) => s + (by.current[k][h] ?? 0), 0) - savedNet(h);
+  const baseCurrent = (h: number) => (by.current[h] ?? 0) - savedNet(h);
   const projectedH = (h: number) => baseCurrent(h) + netH(h);
 
   // ---- diff between the form and the stored corrections --------------------------------
   const savedMap = new Map<string, number>();
   for (const c of saved) {
-    const k = `${c.hourIdx}|${c.minute}|${l2OfSaved(c)}`;
+    const k = `${c.hourIdx}|${c.minute}`;
     savedMap.set(k, (savedMap.get(k) ?? 0) + c.delta);
   }
   const targetMap = new Map<string, number>();
   for (const [hk, list] of Object.entries(rows)) {
     for (const r of list) {
       if (r.del) continue;
-      for (const k of cols) {
-        const v = r.q[k] ?? 0;
-        if (v !== 0) targetMap.set(`${hk}|${r.minute}|${k}`, v);
-      }
+      if (r.q !== 0) targetMap.set(`${hk}|${r.minute}`, r.q);
     }
   }
   const changes: CorrectionChange[] = [];
@@ -148,15 +131,15 @@ export function KonfigurasiDetailModal({
     const before = savedMap.get(key) ?? 0;
     const after = targetMap.get(key) ?? 0;
     if (before !== after) {
-      const [h, m, l2] = key.split("|");
-      changes.push({ hourIdx: Number(h), minute: Number(m), l2Id: l2 as L2Id, after });
+      const [h, m] = key.split("|");
+      changes.push({ hourIdx: Number(h), minute: Number(m), after });
     }
   }
   const hasChange = changes.length > 0;
 
   // ---- validation (OP-15) ---------------------------------------------------------------
   const nonInteger = Object.values(rows).some((list) =>
-    list.some((r) => !r.del && cols.some((k) => !Number.isInteger(r.q[k] ?? 0))),
+    list.some((r) => !r.del && !Number.isInteger(r.q)),
   );
   const badHour = Array.from({ length: currentIdx + 1 }, (_, h) => h).find((h) => projectedH(h) < 0);
   const validationError = nonInteger
@@ -199,12 +182,11 @@ export function KonfigurasiDetailModal({
     setSeq((n) => n + 1);
     setRows((prev) => ({
       ...prev,
-      [hr]: [...(prev[hr] ?? []), { key: `n-${hr}-${seq}`, minute: m, q: {}, del: false }],
+      [hr]: [...(prev[hr] ?? []), { key: `n-${hr}-${seq}`, minute: m, q: 0, del: false }],
     }));
   };
 
-  const step = (h: number, r: Row, k: L2Id, d: number) =>
-    patchRow(h, r.key, (x) => ({ ...x, q: { ...x.q, [k]: (x.q[k] ?? 0) + d } }));
+  const step = (h: number, r: Row, d: number) => patchRow(h, r.key, (x) => ({ ...x, q: x.q + d }));
 
   const handleSave = () => {
     if (!canSave) return;
@@ -245,11 +227,7 @@ export function KonfigurasiDetailModal({
         <DialogHeader className="border-b border-border px-6 py-5 text-left">
           <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
             Konfigurasi detail: {card.name}
-            <span className="flex gap-1">
-              {card.l2.map((l2) => (
-                <L2Badge key={l2} l2={l2} />
-              ))}
-            </span>
+            <L2Badge l2={card.l2} />
           </DialogTitle>
           <DialogDescription data-testid="header-total" className="text-sm">
             Total {totalCurrent} pcs reject
@@ -336,7 +314,6 @@ export function KonfigurasiDetailModal({
               <p className="text-xs leading-relaxed text-muted-foreground">
                 Input angka minus untuk mengurangi nilai actual. Menit yang sudah dipakai tidak
                 ditampilkan. Baris merah = ditandai hapus (bisa dibatalkan).
-                {multi ? " Kolom per kategori: koreksi dicatat di kategori yang dipilih." : ""}
               </p>
 
               <div className="flex items-center gap-3">
@@ -393,50 +370,46 @@ export function KonfigurasiDetailModal({
                         </div>
                       </div>
 
-                      {cols.map((k) => (
-                        <div key={k}>
-                          <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                            Qty {multi && <L2Badge l2={k} />}
-                          </p>
-                          <div className="flex items-center">
-                            <button
-                              type="button"
-                              aria-label={`Kurangi ${k}`}
-                              data-testid={`qty-minus-${k}`}
-                              disabled={!operator || r.del}
-                              onClick={() => step(hr, r, k, -1)}
-                              className="flex size-8 items-center justify-center rounded-l-md border border-border bg-card hover:bg-accent disabled:opacity-40"
-                            >
-                              <Minus className="size-3.5" />
-                            </button>
-                            <input
-                              type="number"
-                              step={1}
-                              aria-label={`Qty ${k}`}
-                              data-testid={`qty-${k}`}
-                              disabled={!operator || r.del}
-                              value={r.q[k] ?? 0}
-                              onChange={(e) =>
-                                patchRow(hr, r.key, (x) => ({
-                                  ...x,
-                                  q: { ...x.q, [k]: e.target.value === "" ? 0 : Number(e.target.value) },
-                                }))
-                              }
-                              className="h-8 w-16 border-y border-border bg-card px-1 text-center text-sm disabled:opacity-50"
-                            />
-                            <button
-                              type="button"
-                              aria-label={`Tambah ${k}`}
-                              data-testid={`qty-plus-${k}`}
-                              disabled={!operator || r.del}
-                              onClick={() => step(hr, r, k, 1)}
-                              className="flex size-8 items-center justify-center rounded-r-md border border-border bg-card hover:bg-accent disabled:opacity-40"
-                            >
-                              <Plus className="size-3.5" />
-                            </button>
-                          </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">Qty</p>
+                        <div className="flex items-center">
+                          <button
+                            type="button"
+                            aria-label="Kurangi"
+                            data-testid="qty-minus"
+                            disabled={!operator || r.del}
+                            onClick={() => step(hr, r, -1)}
+                            className="flex size-8 items-center justify-center rounded-l-md border border-border bg-card hover:bg-accent disabled:opacity-40"
+                          >
+                            <Minus className="size-3.5" />
+                          </button>
+                          <input
+                            type="number"
+                            step={1}
+                            aria-label="Qty"
+                            data-testid="qty"
+                            disabled={!operator || r.del}
+                            value={r.q}
+                            onChange={(e) =>
+                              patchRow(hr, r.key, (x) => ({
+                                ...x,
+                                q: e.target.value === "" ? 0 : Number(e.target.value),
+                              }))
+                            }
+                            className="h-8 w-16 border-y border-border bg-card px-1 text-center text-sm disabled:opacity-50"
+                          />
+                          <button
+                            type="button"
+                            aria-label="Tambah"
+                            data-testid="qty-plus"
+                            disabled={!operator || r.del}
+                            onClick={() => step(hr, r, 1)}
+                            className="flex size-8 items-center justify-center rounded-r-md border border-border bg-card hover:bg-accent disabled:opacity-40"
+                          >
+                            <Plus className="size-3.5" />
+                          </button>
                         </div>
-                      ))}
+                      </div>
 
                       <div className="ml-auto flex gap-1.5">
                         <button
@@ -445,11 +418,7 @@ export function KonfigurasiDetailModal({
                           data-testid="row-reset"
                           disabled={!operator}
                           onClick={() =>
-                            patchRow(hr, r.key, (x) => ({
-                              ...x,
-                              q: Object.fromEntries(cols.map((k) => [k, 0])),
-                              del: false,
-                            }))
+                            patchRow(hr, r.key, (x) => ({ ...x, q: 0, del: false }))
                           }
                           className="flex size-8 items-center justify-center rounded-md border border-border bg-card hover:bg-accent disabled:opacity-40"
                         >

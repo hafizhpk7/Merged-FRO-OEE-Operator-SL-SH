@@ -1,4 +1,4 @@
-export const BUILD_ID = "r45 · 09 Nov 2026 WIB · CR3";
+export const BUILD_ID = "r46 · 09 Nov 2026 WIB · CR1-review";
 
 export const FEATURES = {
   routeTreeManualSync: true,
@@ -87,7 +87,6 @@ export const FEATURES = {
   cr1RejectL2SelfTest: true,
   cr1RejectCorrectionEditor: true,
   cr1RejectCorrectionAudit: true,
-  cr1RejectLain: true,
   cr1RejectEditorSelfTest: true,
   stage3AddRemoveRejectRemoved: true,
   cr5TargetGapOutput: true,
@@ -106,6 +105,9 @@ export const FEATURES = {
   cr3SummarizationCumulativeRecord: true,
   cr3ReconcilePrefillMock: true,
   cr3SummarizationSelfTest: true,
+  cr1ReviewSingleL2PerEntry: true,
+  cr1ReviewMasterRejectConfigPage: true,
+  cr1ReviewExtraRejectCardRemoved: true,
 };
 
 if (typeof window !== "undefined") {
