@@ -1,4 +1,4 @@
-export const BUILD_ID = "r39 · 08 Nov 2026 WIB · CR2";
+export const BUILD_ID = "r42 · 09 Nov 2026 WIB · CR1C";
 
 export const FEATURES = {
   routeTreeManualSync: true,
@@ -13,7 +13,6 @@ export const FEATURES = {
   shiftMasterMock: true,
   rejectPage: true,
   rejectStore: true,
-  rejectManualAddRemove: true,
   rejectDailyTrend: true,
   rejectConfigMock: true,
   operatorDashboard: true,
@@ -79,6 +78,18 @@ export const FEATURES = {
   cr2AtomicGroupSave: true,
   cr2PlannedDowntimeConfirm: true,
   cr2GroupSelfTest: true,
+  cr4ShiftChangeReminder: true,
+  cr4DemoClock: true,
+  cr4ReminderSelfTest: true,
+  cr1RejectL2Flag: true,
+  cr1RejectL2Filter: true,
+  cr1RejectSlotConfigStore: true,
+  cr1RejectL2SelfTest: true,
+  cr1RejectCorrectionEditor: true,
+  cr1RejectCorrectionAudit: true,
+  cr1RejectLain: true,
+  cr1RejectEditorSelfTest: true,
+  stage3AddRemoveRejectRemoved: true,
 };
 
 if (typeof window !== "undefined") {

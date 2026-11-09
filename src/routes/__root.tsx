@@ -17,6 +17,9 @@ import { DEFAULT_PLANT_ID, DEFAULT_ZONE_ID } from "@/lib/oee/data";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import "@/lib/oee/oeeSelfTest";
 import "@/lib/oee/reasonGroupSelfTest";
+import "@/lib/oee/reminderSelfTest";
+import "@/lib/oee/rejectL2SelfTest";
+import "@/lib/oee/rejectEditorSelfTest";
 
 function NotFoundComponent() {
   return (

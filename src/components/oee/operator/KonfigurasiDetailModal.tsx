@@ -1,32 +1,36 @@
 import { useEffect, useState } from "react";
-import { Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { Minus, Plus, RotateCcw, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { MOCK_OPERATORS, type RejectSlot } from "@/lib/oee/rejectConfig";
-import { rejectStore, useRejectStore } from "@/lib/oee/rejectStore";
-import { formatTimeWib, getShiftInfo } from "@/lib/oee/shiftClock";
+import { Textarea } from "@/components/ui/textarea";
+import { MOCK_OPERATORS } from "@/lib/oee/rejectConfig";
+import { rejectConfigStore, type L2Id, type RejectCard } from "@/lib/oee/rejectConfigStore";
+import { rejectStore, useRejectStore, type CorrectionChange } from "@/lib/oee/rejectStore";
+import { formatTimeWib, getNowMs, getShiftInfo } from "@/lib/oee/shiftClock";
+import { L2Badge } from "./L2Badge";
 
-type DraftRow = { key: string; minute: string; qty: string };
-type BucketDraft = { rows: DraftRow[]; removeIds: string[] };
+type Row = { key: string; minute: number; q: Partial<Record<L2Id, number>>; del: boolean };
 
+const ALL_L2: L2Id[] = ["RM", "RP", "RS"];
 const pad2 = (n: number) => String(n).padStart(2, "0");
+const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
 
 /**
- * "Konfigurasi Detail": the operator corrects the output reject of one slot per hourly bucket.
- * Corrections are per minute; a negative qty reduces the actual (sensor) value.
+ * "Konfigurasi Detail" (CR 1 OP-10..OP-19): the operator corrects the reject of one reason (L3)
+ * per hour and minute. Current = actual + corrections over all categories; Actual stays the
+ * sensor value. Every save needs a reason and a leader name and is written to the audit trail.
  */
 export function KonfigurasiDetailModal({
   open,
   onOpenChange,
-  slot,
+  card,
   plantId,
   lineId,
   shiftKey,
@@ -34,7 +38,7 @@ export function KonfigurasiDetailModal({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  slot: RejectSlot | null;
+  card: RejectCard | null;
   plantId: string;
   lineId: string;
   shiftKey: string;
@@ -45,131 +49,215 @@ export function KonfigurasiDetailModal({
 
   const shift = getShiftInfo();
   const isCurrentShift = shiftKey === shift.shiftKey;
-  const nowSec = Math.floor(Date.now() / 1000);
+  const nowSec = Math.floor(getNowMs() / 1000);
+  // OP-15: only hours of the selected shift up to the running hour can be corrected
   const currentIdx = isCurrentShift
     ? Math.max(0, Math.min(7, Math.floor((nowSec - shift.startSec) / 3600)))
     : 7;
+  const nowMinute = isCurrentShift ? Math.floor(((nowSec - shift.startSec) % 3600) / 60) : 59;
 
+  const l3Id = card?.l3Id ?? "";
+  const saved = card ? rejectStore.getCorrections(plantId, lineId, shiftKey, l3Id, machineCode) : [];
+  const by = card ? rejectStore.getHourlyByL2(plantId, lineId, shiftKey, l3Id, machineCode) : null;
+
+  const l2OfSaved = (c: { l2Id?: L2Id; machineCode: string; rejectTypeId: string }): L2Id =>
+    c.l2Id ?? rejectConfigStore.defaultL2(plantId, lineId, c.machineCode, c.rejectTypeId);
+
+  // Columns: the bound categories, plus any category an older correction was stored under.
+  const cols: L2Id[] = card
+    ? ALL_L2.filter((k) => card.l2.includes(k) || saved.some((c) => l2OfSaved(c) === k))
+    : [];
+  const multi = cols.length > 1;
+
+  const buildRows = (): Record<number, Row[]> => {
+    const out: Record<number, Row[]> = {};
+    const byKey = new Map<string, Row>();
+    for (const c of saved) {
+      const k = `${c.hourIdx}|${c.minute}`;
+      let row = byKey.get(k);
+      if (!row) {
+        row = { key: `s-${k}`, minute: c.minute, q: {}, del: false };
+        byKey.set(k, row);
+        (out[c.hourIdx] ??= []).push(row);
+      }
+      const l2 = l2OfSaved(c);
+      row.q[l2] = (row.q[l2] ?? 0) + c.delta;
+    }
+    for (const list of Object.values(out)) list.sort((a, b) => a.minute - b.minute);
+    return out;
+  };
+
+  const savedSig = saved.map((c) => `${c.id}:${c.delta}`).join(",");
   const [operator, setOperator] = useState("");
-  const [selected, setSelected] = useState<number | null>(null);
-  const [drafts, setDrafts] = useState<Record<number, BucketDraft>>({});
+  const [hr, setHr] = useState<number | null>(null);
+  const [rows, setRows] = useState<Record<number, Row[]>>({});
+  const [reason, setReason] = useState("");
+  const [leader, setLeader] = useState("");
+  const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [seq, setSeq] = useState(0);
 
-  // Reset local state whenever the dialog is (re)opened for a slot.
+  // Fresh form whenever the dialog opens for a reason.
   useEffect(() => {
     if (open) {
       setOperator("");
-      setDrafts({});
-      setSelected(null);
+      setReason("");
+      setLeader("");
+      setNotice(null);
+      setHr(null);
     }
-  }, [open, slot?.slotId]);
+  }, [open, l3Id]);
 
-  const rejectTypeId = slot?.rejectTypeId ?? "";
-  const series = slot
-    ? rejectStore.getHourlySeries(plantId, lineId, shiftKey, rejectTypeId, machineCode)
-    : { actual: [] as number[], current: [] as number[] };
-  const saved = slot
-    ? rejectStore.getCorrections(plantId, lineId, shiftKey, rejectTypeId, machineCode)
-    : [];
+  // Rows mirror what is stored; rebuilt on open and after every save.
+  useEffect(() => {
+    if (open) setRows(buildRows());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, l3Id, savedSig]);
 
-  if (!slot) return null;
+  if (!card || !by) return null;
 
   const hourLabel = (h: number) => formatTimeWib(shift.startSec + h * 3600);
-  // An hour still in progress cannot be corrected yet.
-  const isBucketDisabled = (h: number) => isCurrentShift && h === currentIdx;
+  const actualH = (h: number) => ALL_L2.reduce((s, k) => s + (by.actual[k][h] ?? 0), 0);
+  const rowsOf = (h: number): Row[] => rows[h] ?? [];
+  const qOf = (r: Row, k: L2Id) => r.q[k] ?? 0;
+  const netH = (h: number) =>
+    rowsOf(h).reduce((s, r) => (r.del ? s : s + cols.reduce((a, k) => a + qOf(r, k), 0)), 0);
+  const savedNet = (h: number) => saved.filter((c) => c.hourIdx === h).reduce((s, c) => s + c.delta, 0);
+  // Current of an hour without any stored correction, then with the edits in the form
+  const baseCurrent = (h: number) =>
+    ALL_L2.reduce((s, k) => s + (by.current[k][h] ?? 0), 0) - savedNet(h);
+  const projectedH = (h: number) => baseCurrent(h) + netH(h);
 
-  const draftOf = (h: number): BucketDraft => drafts[h] ?? { rows: [], removeIds: [] };
-  const patchDraft = (h: number, fn: (d: BucketDraft) => BucketDraft) =>
-    setDrafts((prev) => ({ ...prev, [h]: fn(prev[h] ?? { rows: [], removeIds: [] }) }));
+  // ---- diff between the form and the stored corrections --------------------------------
+  const savedMap = new Map<string, number>();
+  for (const c of saved) {
+    const k = `${c.hourIdx}|${c.minute}|${l2OfSaved(c)}`;
+    savedMap.set(k, (savedMap.get(k) ?? 0) + c.delta);
+  }
+  const targetMap = new Map<string, number>();
+  for (const [hk, list] of Object.entries(rows)) {
+    for (const r of list) {
+      if (r.del) continue;
+      for (const k of cols) {
+        const v = r.q[k] ?? 0;
+        if (v !== 0) targetMap.set(`${hk}|${r.minute}|${k}`, v);
+      }
+    }
+  }
+  const changes: CorrectionChange[] = [];
+  for (const key of new Set([...savedMap.keys(), ...targetMap.keys()])) {
+    const before = savedMap.get(key) ?? 0;
+    const after = targetMap.get(key) ?? 0;
+    if (before !== after) {
+      const [h, m, l2] = key.split("|");
+      changes.push({ hourIdx: Number(h), minute: Number(m), l2Id: l2 as L2Id, after });
+    }
+  }
+  const hasChange = changes.length > 0;
 
-  // Value of a bucket as it would be after the pending (unsaved) edits.
-  const projected = (h: number): number => {
-    const base = series.current[h] ?? 0;
-    const d = draftOf(h);
-    const removed = saved
-      .filter((c) => c.hourIdx === h && d.removeIds.includes(c.id))
-      .reduce((s, c) => s + c.delta, 0);
-    const added = d.rows.reduce((s, r) => s + (parseInt(r.qty, 10) || 0), 0);
-    return base - removed + added;
-  };
+  // ---- validation (OP-15) ---------------------------------------------------------------
+  const nonInteger = Object.values(rows).some((list) =>
+    list.some((r) => !r.del && cols.some((k) => !Number.isInteger(r.q[k] ?? 0))),
+  );
+  const badHour = Array.from({ length: currentIdx + 1 }, (_, h) => h).find((h) => projectedH(h) < 0);
+  const validationError = nonInteger
+    ? "Qty harus bilangan bulat."
+    : badHour !== undefined
+      ? `Pengurangan melebihi nilai actual pada ${hourLabel(badHour)}.`
+      : null;
 
-  const totalProjected = Array.from({ length: currentIdx + 1 }, (_, h) => projected(h)).reduce(
+  const totalActual = Array.from({ length: currentIdx + 1 }, (_, h) => actualH(h)).reduce((a, b) => a + b, 0);
+  const totalCurrent = Array.from({ length: 8 }, (_, h) => Math.max(0, projectedH(h))).reduce(
     (a, b) => a + b,
     0,
   );
 
-  const hasChanges = Object.values(drafts).some((d) => d.rows.length > 0 || d.removeIds.length > 0);
-  const rowError = (h: number, r: DraftRow): string | null => {
-    if (r.minute === "") return "Pilih menit";
-    const q = Number(r.qty);
-    if (r.qty.trim() === "" || !Number.isInteger(q) || q === 0) return "Qty harus bilangan bulat ≠ 0";
-    return null;
-  };
-  const bucketErrors = Object.entries(drafts).flatMap(([hk, d]) => {
-    const h = Number(hk);
-    const errs = d.rows.map((r) => rowError(h, r)).filter((e): e is string => !!e);
-    if (projected(h) < 0) errs.push(`Total ${hourLabel(h)} tidak boleh di bawah 0`);
-    return errs;
-  });
-  const canSave = !!operator && hasChanges && bucketErrors.length === 0;
+  // ---- confirmation (OP-16..OP-18) ----------------------------------------------------------
+  const missing: string[] = [];
+  if (!operator) missing.push("nama operator");
+  if (!hasChange) missing.push("perubahan nilai");
+  if (hasChange && !reason.trim()) missing.push("alasan");
+  if (hasChange && !leader.trim()) missing.push("nama leader");
+  const canSave = missing.length === 0 && !validationError;
+  const statusText = validationError
+    ? validationError
+    : canSave
+      ? `Perubahan siap disimpan: total ${totalActual} menjadi ${totalCurrent} pcs.`
+      : `Lengkapi: ${missing.join(", ")}.`;
+
+  // ---- row editing --------------------------------------------------------------------------
+  const patchRow = (h: number, key: string, fn: (r: Row) => Row) =>
+    setRows((prev) => ({ ...prev, [h]: (prev[h] ?? []).map((r) => (r.key === key ? fn(r) : r)) }));
+
+  const minuteAllowed = (h: number, m: number) => !(isCurrentShift && h === currentIdx && m > nowMinute);
 
   const addRow = () => {
-    if (selected === null || !operator) return;
-    setSeq((s) => s + 1);
-    patchDraft(selected, (d) => ({
-      ...d,
-      rows: [...d.rows, { key: `new-${selected}-${seq}`, minute: "", qty: "-1" }],
+    if (hr === null || !operator) return;
+    const used = new Set(rowsOf(hr).map((r) => r.minute));
+    let m = 0;
+    while (m < 60 && (used.has(m) || !minuteAllowed(hr, m))) m += 1;
+    if (m >= 60) return;
+    setSeq((n) => n + 1);
+    setRows((prev) => ({
+      ...prev,
+      [hr]: [...(prev[hr] ?? []), { key: `n-${hr}-${seq}`, minute: m, q: {}, del: false }],
     }));
   };
 
+  const step = (h: number, r: Row, k: L2Id, d: number) =>
+    patchRow(h, r.key, (x) => ({ ...x, q: { ...x.q, [k]: (x.q[k] ?? 0) + d } }));
+
   const handleSave = () => {
     if (!canSave) return;
-    const add: { hourIdx: number; minute: number; delta: number }[] = [];
-    const removeIds: string[] = [];
-    for (const [hk, d] of Object.entries(drafts)) {
-      removeIds.push(...d.removeIds);
-      for (const r of d.rows)
-        add.push({ hourIdx: Number(hk), minute: Number(r.minute), delta: parseInt(r.qty, 10) });
-    }
-    rejectStore.applyCorrections({
+    const res = rejectStore.saveCorrections({
       plantId,
       lineId,
       shiftKey,
       machineCode,
-      rejectTypeId,
-      rejectTypeName: slot.rejectTypeName ?? "",
-      category: slot.category ?? "Reject",
+      l3Id,
+      l3Name: card.name,
+      category: card.category,
       operator,
-      removeIds,
-      add,
+      reason,
+      leader,
+      changes,
     });
-    toast.success(`Koreksi ${slot.rejectTypeName} disimpan oleh ${operator}.`);
-    onOpenChange(false);
+    if (!res.ok) {
+      setNotice({ kind: "error", text: res.errors.join(" ") });
+      return;
+    }
+    setNotice({
+      kind: "ok",
+      text: `Koreksi tersimpan dan dicatat di audit trail (${res.audit.length} entri: operator, alasan, leader).`,
+    });
+    setReason("");
+    setLeader("");
+    toast.success(`Koreksi ${card.name} disimpan oleh ${operator}.`);
   };
 
-  const sel = selected;
-  const selDraft = sel !== null ? draftOf(sel) : null;
-  const selSaved = sel !== null ? saved.filter((c) => c.hourIdx === sel) : [];
-  const usedMinutes = new Set<number>([
-    ...selSaved.filter((c) => !selDraft?.removeIds.includes(c.id)).map((c) => c.minute),
-    ...(selDraft?.rows.filter((r) => r.minute !== "").map((r) => Number(r.minute)) ?? []),
-  ]);
-  const selActual = sel !== null ? (series.actual[sel] ?? 0) : 0;
-  const selProjected = sel !== null ? projected(sel) : 0;
-  const barMax = Math.max(1, selActual, selProjected);
+  const audit = rejectStore.getAudit(plantId, lineId, machineCode, l3Id);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto p-0 sm:max-w-2xl">
+      <DialogContent
+        data-testid="correction-modal"
+        className="max-h-[92vh] overflow-y-auto p-0 sm:max-w-3xl"
+      >
         <DialogHeader className="border-b border-border px-6 py-5 text-left">
-          <DialogTitle className="text-lg font-semibold">{slot.rejectTypeName}</DialogTitle>
-          <DialogDescription className="text-sm">
-            Total {totalProjected} pcs reject
+          <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+            Konfigurasi detail: {card.name}
+            <span className="flex gap-1">
+              {card.l2.map((l2) => (
+                <L2Badge key={l2} l2={l2} />
+              ))}
+            </span>
+          </DialogTitle>
+          <DialogDescription data-testid="header-total" className="text-sm">
+            Total {totalCurrent} pcs reject
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5 px-6 py-2">
-          {/* Operator */}
+          {/* Nama operator (OP-12) */}
           <div className="space-y-1">
             <p className="text-sm font-semibold text-foreground">Nama operator</p>
             <p className="text-xs text-muted-foreground">
@@ -182,7 +270,7 @@ export function KonfigurasiDetailModal({
                 onChange={(e) => setOperator(e.target.value)}
                 className="h-10 w-full appearance-none rounded-md border border-border bg-card px-3 pr-14 text-sm text-foreground"
               >
-                <option value="">Pilih operator…</option>
+                <option value="">Pilih operator</option>
                 {MOCK_OPERATORS.map((o) => (
                   <option key={o} value={o}>
                     {o}
@@ -202,174 +290,182 @@ export function KonfigurasiDetailModal({
             </div>
           </div>
 
-          {/* Time buckets */}
+          {/* Time buckets (OP-13) */}
           <div className="space-y-2">
-            <div>
-              <p className="text-sm font-semibold text-foreground">Time Buckets</p>
-              <p className="text-xs text-muted-foreground">Pilih slot waktu yang ingin dikoreksi</p>
-            </div>
+            <p className="text-sm font-semibold text-foreground">Time buckets</p>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
               {Array.from({ length: currentIdx + 1 }, (_, h) => {
-                const disabled = isBucketDisabled(h);
-                const active = sel === h;
-                const edited = (drafts[h]?.rows.length ?? 0) + (drafts[h]?.removeIds.length ?? 0) > 0;
+                const a = actualH(h);
+                const n = netH(h);
+                const has = a > 0 || rowsOf(h).length > 0;
+                const active = hr === h;
+                const label = has ? `${a}${n !== 0 ? ` (${signed(n)})` : ""}` : "-";
                 return (
                   <button
                     key={h}
                     type="button"
-                    disabled={disabled}
-                    onClick={() => setSelected(h)}
+                    data-testid={`bucket-${h}`}
+                    data-label={label}
+                    disabled={!has && !active}
+                    onClick={() => setHr(h)}
                     className={`rounded-md border px-2 py-2 text-center transition-colors ${
-                      disabled
-                        ? "cursor-not-allowed border-transparent bg-muted text-muted-foreground"
-                        : active
-                          ? "border-red-500 bg-red-50 text-red-800 dark:bg-red-950/50"
-                          : "border-transparent bg-muted/50 text-foreground hover:bg-muted"
+                      active
+                        ? "border-red-500 bg-red-50 text-red-800 dark:bg-red-950/50"
+                        : has
+                          ? "border-transparent bg-muted/50 text-foreground hover:bg-muted"
+                          : "cursor-not-allowed border-transparent bg-muted/30 text-muted-foreground"
                     }`}
                   >
                     <span className="block text-sm font-semibold">{hourLabel(h)}</span>
-                    <span
-                      className={`mt-0.5 inline-block rounded px-1.5 text-xs ${
-                        edited ? "bg-red-100 font-bold text-red-700" : ""
-                      }`}
-                    >
-                      {projected(h)}
-                    </span>
+                    <span className="mt-0.5 block text-xs">{label}</span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Correction panel */}
-          {sel !== null && selDraft && (
-            <div className="space-y-3 rounded-lg border border-border bg-card p-4">
-              <p className="text-sm font-semibold text-foreground">
-                Koreksi {hourLabel(sel)} – {hourLabel(sel).slice(0, 2)}:59
+          {/* Koreksi per menit (OP-13, OP-14) */}
+          {hr !== null && (
+            <div
+              className="space-y-3 rounded-lg border border-border bg-card p-4"
+              data-testid="correction-area"
+            >
+              <p className="text-sm font-semibold text-red-700">
+                Koreksi {hourLabel(hr)} - {hourLabel(hr).slice(0, 2)}:59
               </p>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Silakan input angka minus untuk mengurangi nilai actual. Pilih menit dari daftar —
-                menit yang sudah dipakai tidak ditampilkan. Baris merah = ditandai hapus (bisa
-                dibatalkan).
+                Input angka minus untuk mengurangi nilai actual. Menit yang sudah dipakai tidak
+                ditampilkan. Baris merah = ditandai hapus (bisa dibatalkan).
+                {multi ? " Kolom per kategori: koreksi dicatat di kategori yang dipilih." : ""}
               </p>
 
-              {/* Actual vs corrected bar */}
               <div className="flex items-center gap-3">
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-red-100">
                   <div
                     className="h-full rounded-full bg-red-600 transition-all"
-                    style={{ width: `${(Math.max(0, selProjected) / barMax) * 100}%` }}
+                    style={{
+                      width: `${actualH(hr) > 0 ? Math.min(100, (Math.abs(netH(hr)) / actualH(hr)) * 100) : 0}%`,
+                    }}
                   />
                 </div>
-                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
-                  {selProjected} pcs
-                </span>
+                <span className="text-xs text-red-700">{actualH(hr)} pcs</span>
               </div>
-              <p className="text-[11px] text-muted-foreground">Actual: {selActual} pcs</p>
 
-              {selSaved.length === 0 && selDraft.rows.length === 0 && (
-                <p className="py-4 text-sm text-muted-foreground">
-                  Belum ada koreksi menit. Tambahkan baris untuk set qty per menit.
-                </p>
+              {rowsOf(hr).length === 0 && (
+                <p className="text-sm text-muted-foreground">Belum ada koreksi pada jam ini.</p>
               )}
 
               <div className="space-y-2">
-                {selSaved.map((c) => {
-                  const marked = selDraft.removeIds.includes(c.id);
+                {rowsOf(hr).map((r) => {
+                  const used = new Set(rowsOf(hr).filter((x) => x.key !== r.key).map((x) => x.minute));
+                  const minutes = Array.from({ length: 60 }, (_, m) => m).filter(
+                    (m) => !used.has(m) && (minuteAllowed(hr, m) || m === r.minute),
+                  );
                   return (
                     <div
-                      key={c.id}
-                      className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm ${
-                        marked
-                          ? "border-red-300 bg-red-50 text-red-800 line-through dark:bg-red-950/40"
-                          : "border-border bg-muted/30"
+                      key={r.key}
+                      data-testid="correction-row"
+                      data-deleted={r.del}
+                      className={`flex flex-wrap items-end gap-3 rounded-md border px-3 py-2 ${
+                        r.del ? "border-red-300 bg-red-50 dark:bg-red-950/40" : "border-border bg-muted/20"
                       }`}
                     >
-                      <span className="w-14 font-mono">
-                        {hourLabel(sel).slice(0, 2)}:{pad2(c.minute)}
-                      </span>
-                      <span className="w-16 font-mono font-semibold">
-                        {c.delta > 0 ? `+${c.delta}` : c.delta} pcs
-                      </span>
-                      <span className="flex-1 truncate text-xs text-muted-foreground">
-                        {c.operator}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={!operator}
-                        aria-label={marked ? "Batalkan hapus" : "Tandai hapus"}
-                        onClick={() =>
-                          patchDraft(sel, (d) => ({
-                            ...d,
-                            removeIds: marked
-                              ? d.removeIds.filter((id) => id !== c.id)
-                              : [...d.removeIds, c.id],
-                          }))
-                        }
-                        className="text-muted-foreground hover:text-red-700 disabled:opacity-40"
-                      >
-                        {marked ? <RotateCcw className="size-4" /> : <Trash2 className="size-4" />}
-                      </button>
-                    </div>
-                  );
-                })}
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">Waktu</p>
+                        <div className="flex items-center gap-1 text-sm">
+                          <span>{hourLabel(hr).slice(0, 2)}</span>:
+                          <select
+                            aria-label="Menit koreksi"
+                            data-testid="row-minute"
+                            disabled={!operator || r.del}
+                            value={r.minute}
+                            onChange={(e) =>
+                              patchRow(hr, r.key, (x) => ({ ...x, minute: Number(e.target.value) }))
+                            }
+                            className="h-8 rounded-md border border-border bg-card px-1.5 text-sm disabled:opacity-50"
+                          >
+                            {minutes.map((m) => (
+                              <option key={m} value={m}>
+                                {pad2(m)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
 
-                {selDraft.rows.map((r) => {
-                  const mine = Number(r.minute);
-                  const options = Array.from({ length: 60 }, (_, m) => m).filter(
-                    (m) => !usedMinutes.has(m) || (r.minute !== "" && m === mine),
-                  );
-                  return (
-                    <div key={r.key} className="flex items-center gap-3">
-                      <select
-                        aria-label="Menit koreksi"
-                        value={r.minute}
-                        onChange={(e) =>
-                          patchDraft(sel, (d) => ({
-                            ...d,
-                            rows: d.rows.map((x) =>
-                              x.key === r.key ? { ...x, minute: e.target.value } : x,
-                            ),
-                          }))
-                        }
-                        className="h-9 w-28 rounded-md border border-border bg-card px-2 text-sm"
-                      >
-                        <option value="">Menit…</option>
-                        {options.map((m) => (
-                          <option key={m} value={m}>
-                            {hourLabel(sel).slice(0, 2)}:{pad2(m)}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        aria-label="Qty koreksi"
-                        type="number"
-                        step={1}
-                        value={r.qty}
-                        onChange={(e) =>
-                          patchDraft(sel, (d) => ({
-                            ...d,
-                            rows: d.rows.map((x) =>
-                              x.key === r.key ? { ...x, qty: e.target.value } : x,
-                            ),
-                          }))
-                        }
-                        className="h-9 w-24 rounded-md border border-border bg-card px-2 text-sm"
-                      />
-                      <span className="text-xs text-muted-foreground">pcs</span>
-                      <button
-                        type="button"
-                        aria-label="Hapus baris"
-                        onClick={() =>
-                          patchDraft(sel, (d) => ({
-                            ...d,
-                            rows: d.rows.filter((x) => x.key !== r.key),
-                          }))
-                        }
-                        className="ml-auto text-muted-foreground hover:text-red-700"
-                      >
-                        <X className="size-4" />
-                      </button>
+                      {cols.map((k) => (
+                        <div key={k}>
+                          <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                            Qty {multi && <L2Badge l2={k} />}
+                          </p>
+                          <div className="flex items-center">
+                            <button
+                              type="button"
+                              aria-label={`Kurangi ${k}`}
+                              data-testid={`qty-minus-${k}`}
+                              disabled={!operator || r.del}
+                              onClick={() => step(hr, r, k, -1)}
+                              className="flex size-8 items-center justify-center rounded-l-md border border-border bg-card hover:bg-accent disabled:opacity-40"
+                            >
+                              <Minus className="size-3.5" />
+                            </button>
+                            <input
+                              type="number"
+                              step={1}
+                              aria-label={`Qty ${k}`}
+                              data-testid={`qty-${k}`}
+                              disabled={!operator || r.del}
+                              value={r.q[k] ?? 0}
+                              onChange={(e) =>
+                                patchRow(hr, r.key, (x) => ({
+                                  ...x,
+                                  q: { ...x.q, [k]: e.target.value === "" ? 0 : Number(e.target.value) },
+                                }))
+                              }
+                              className="h-8 w-16 border-y border-border bg-card px-1 text-center text-sm disabled:opacity-50"
+                            />
+                            <button
+                              type="button"
+                              aria-label={`Tambah ${k}`}
+                              data-testid={`qty-plus-${k}`}
+                              disabled={!operator || r.del}
+                              onClick={() => step(hr, r, k, 1)}
+                              className="flex size-8 items-center justify-center rounded-r-md border border-border bg-card hover:bg-accent disabled:opacity-40"
+                            >
+                              <Plus className="size-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                      <div className="ml-auto flex gap-1.5">
+                        <button
+                          type="button"
+                          aria-label="Reset baris"
+                          data-testid="row-reset"
+                          disabled={!operator}
+                          onClick={() =>
+                            patchRow(hr, r.key, (x) => ({
+                              ...x,
+                              q: Object.fromEntries(cols.map((k) => [k, 0])),
+                              del: false,
+                            }))
+                          }
+                          className="flex size-8 items-center justify-center rounded-md border border-border bg-card hover:bg-accent disabled:opacity-40"
+                        >
+                          <RotateCcw className="size-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={r.del ? "Batalkan hapus" : "Tandai hapus"}
+                          data-testid="row-delete"
+                          disabled={!operator}
+                          onClick={() => patchRow(hr, r.key, (x) => ({ ...x, del: !x.del }))}
+                          className="flex size-8 items-center justify-center rounded-md border border-border bg-card hover:bg-accent disabled:opacity-40"
+                        >
+                          {r.del ? <Undo2 className="size-3.5" /> : <X className="size-3.5" />}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -377,30 +473,125 @@ export function KonfigurasiDetailModal({
 
               <button
                 type="button"
-                disabled={!operator || usedMinutes.size >= 60}
+                data-testid="add-correction"
+                disabled={!operator}
                 onClick={addRow}
                 className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-red-300 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Plus className="size-4" /> Tambah Menit Koreksi
+                <Plus className="size-4" /> Tambah menit koreksi
               </button>
             </div>
           )}
 
-          {bucketErrors.length > 0 && <p className="text-xs text-destructive">{bucketErrors[0]}</p>}
-        </div>
+          {/* Konfirmasi perubahan (OP-16, OP-17) */}
+          <div className="space-y-3 border-t border-border pt-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-foreground">Konfirmasi perubahan</span>
+              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800">
+                Baru
+              </span>
+              <span className="ml-auto text-xs text-muted-foreground">
+                Wajib bila ada perubahan nilai
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.6fr_1fr]">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Alasan perubahan <span className="text-red-600">*</span>
+                </label>
+                <Textarea
+                  aria-label="Alasan perubahan"
+                  data-testid="reason-input"
+                  rows={2}
+                  placeholder="Mis. reject sensor terhitung dobel"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Nama leader / superior <span className="text-red-600">*</span>
+                </label>
+                <input
+                  aria-label="Nama leader"
+                  data-testid="leader-input"
+                  placeholder="Nama leader"
+                  value={leader}
+                  onChange={(e) => setLeader(e.target.value)}
+                  className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+                />
+              </div>
+            </div>
+            <p
+              data-testid="status-line"
+              data-ready={canSave}
+              className={`text-xs ${validationError ? "text-destructive" : "text-muted-foreground"}`}
+            >
+              {statusText}
+            </p>
+            {notice && (
+              <p
+                data-testid="save-notice"
+                className={`text-xs ${notice.kind === "ok" ? "text-emerald-700" : "text-destructive"}`}
+              >
+                {notice.text}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                data-testid="cancel-correction"
+                onClick={() => onOpenChange(false)}
+              >
+                Batal
+              </Button>
+              <Button
+                data-testid="save-correction"
+                onClick={handleSave}
+                disabled={!canSave}
+                className="bg-red-600 px-6 text-white hover:bg-red-700"
+              >
+                Simpan
+              </Button>
+            </div>
+          </div>
 
-        <DialogFooter className="border-t border-border px-6 py-4 sm:justify-end">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Batal
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={!canSave}
-            className="bg-red-600 px-6 text-white hover:bg-red-700"
-          >
-            Simpan
-          </Button>
-        </DialogFooter>
+          {/* Riwayat koreksi (OP-19, read only, newest first) */}
+          <div className="space-y-2 border-t border-border pb-4 pt-4" data-testid="history">
+            <p className="text-sm font-semibold text-foreground">Riwayat koreksi</p>
+            {audit.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Belum ada koreksi tersimpan.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {audit.slice(0, 30).map((a) => (
+                  <li
+                    key={a.id}
+                    data-testid="history-row"
+                    className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-muted-foreground">
+                        {formatTimeWib(a.savedAt, true)}
+                      </span>
+                      <span className="font-semibold">{a.operator}</span>
+                      <span className="font-mono">
+                        {hourLabel(a.hourIdx).slice(0, 2)}:{pad2(a.minute)}
+                      </span>
+                      <L2Badge l2={a.l2Id} />
+                      <span data-testid="history-values" className="font-mono">
+                        {a.before} → {a.after} ({signed(a.delta)})
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-muted-foreground">
+                      Alasan: {a.reason} · Leader: {a.leader}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
