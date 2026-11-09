@@ -43,6 +43,22 @@ import { Button } from "@/components/ui/button";
 import { PeriodDropdown } from "./period-dropdown";
 import { KpiDelta } from "./kpi-delta";
 import { getNow } from "@/lib/oee/shiftClock";
+import { useSimulationActive } from "@/lib/oee/simControls";
+
+/** Shown in the SL/SH header (and the panel) whenever an override differs from the live defaults. */
+export function SimulationActiveBadge() {
+  const active = useSimulationActive();
+  if (!active) return null;
+  return (
+    <span
+      data-testid="sim-badge-header"
+      className="inline-flex items-center rounded-md bg-red-600 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white shrink-0"
+      title="Waktu atau data simulasi berbeda dari default live"
+    >
+      Simulation active
+    </span>
+  );
+}
 
 export const LiveClockChip = memo(function LiveClockChip() {
   const [now, setNow] = useState<Date>(() => getNow());
@@ -591,6 +607,7 @@ export function PageHeader({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <SimulationActiveBadge />
           <LiveClockChip />
           <DataUpdatedIndicator />
           {meta && (

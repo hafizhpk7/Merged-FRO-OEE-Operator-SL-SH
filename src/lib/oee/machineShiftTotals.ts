@@ -21,6 +21,8 @@ import type { MachineTotals } from "./oeeTotals";
 import { makeRng } from "./rng";
 import { getLineLossFactor } from "./calibration";
 import { densifySpans, getMachineDensity, type DenseSpan } from "./eventDensity";
+import { outputMultiplier, simStore } from "./simStore";
+import { overlapsAny, trimForInjected } from "./simInject";
 import { getNowMs } from "./shiftClock";
 
 const closedShiftCache = new Map<string, MachineTotals>();
@@ -108,6 +110,19 @@ function computeClosedShiftTotalsFast(
     }
   }
 
+  // Injected demo events (same merge as getShiftTimeline)
+  const injList = simStore.get().injected.filter((x) => x.shiftKey === shiftInfo.shiftKey && x.machineCode === machineCode);
+  const injSpans = injList.map((x) => ({ startSec: x.startSec, endSec: Math.min(SHIFT_SECONDS, x.startSec + x.durationSec) }));
+  for (const inj of injList) {
+    const a = inj.startSec;
+    const b = Math.min(SHIFT_SECONDS, inj.startSec + inj.durationSec);
+    const kept = trimForInjected(events, { startSec: a, endSec: b }, (e, p) => ({ ...e, startSec: p.startSec ?? e.startSec, endSec: p.endSec ?? e.endSec }));
+    events.length = 0;
+    events.push(...kept, { startSec: a, endSec: b, type: inj.type, ...(inj.speedPct !== undefined ? { speedPct: inj.speedPct } : {}) });
+    events.sort((x, y) => x.startSec - y.startSec);
+  }
+  if (nslPlans && injSpans.length) nslPlans = nslPlans.filter((p) => !overlapsAny(p, injSpans));
+
   // Same Negative Speed Loss schedule as getShiftTimeline (CR 2), planned from the same gaps.
   for (const plan of nslPlans ?? planNslEvents(events, seed)) {
     events.push({
@@ -131,6 +146,7 @@ function computeClosedShiftTotalsFast(
 
   for (let w = 0; w < 960; w++) {
     const wMid = w * 30 + 15;
+    const mult = outputMultiplier(shiftInfo.startSec, w * 30);
     while (evIdx < events.length && (events[evIdx]?.endSec ?? 0) <= wMid) {
       evIdx++;
     }
@@ -148,9 +164,11 @@ function computeClosedShiftTotalsFast(
       } else if (ev.type === "speed_loss") {
         runningSec += 30;
         const pct = ev.speedPct ?? 78;
-        const u = Math.round((targetPerWindow * pct) / 100);
+        const u0 = Math.round((targetPerWindow * pct) / 100);
+        const u = mult !== 1 ? Math.round(u0 * mult) : u0;
         units += u;
-        positiveSlSec += ((targetPerWindow - u) * 30) / targetPerWindow;
+        if (u < targetPerWindow) positiveSlSec += ((targetPerWindow - u) * 30) / targetPerWindow;
+        else if (u > targetPerWindow) negativeSlSec += ((u - targetPerWindow) * 30) / targetPerWindow;
       } else if (ev.type === "negative_speed_loss") {
         runningSec += 30;
         const u = Math.round((targetPerWindow * (ev.speedPct ?? 125)) / 100);
@@ -161,7 +179,7 @@ function computeClosedShiftTotalsFast(
       }
     } else {
       runningSec += 30;
-      units += Math.round(targetPerWindow);
+      units += mult !== 1 ? Math.round(targetPerWindow * mult) : Math.round(targetPerWindow);
     }
   }
 
@@ -279,7 +297,7 @@ export function getMachineShiftTotals(
   }
 
   const isClosed = !shiftInfo.isCurrent || effectiveUntilMs >= shiftEndMs;
-  const closedKey = `${plantId}:${lineId}:${machineCode}:${shiftInfo.shiftKey}:${getMachineDensity(plantId, machineCode)}`;
+  const closedKey = `${plantId}:${lineId}:${machineCode}:${shiftInfo.shiftKey}:${getMachineDensity(plantId, machineCode)}:${simStore.dataVersion()}`;
 
   if (isClosed && closedShiftCache.has(closedKey)) {
     return closedShiftCache.get(closedKey)!;

@@ -41,8 +41,13 @@ export function OperatorDashboardContent({
   // Density change / simulation reset: QA counters start over.
   useEffect(() => {
     const reset = () => setQaStats({ sample: 227, released: 187, reject: 40 });
+    const trigger = () => setQaModalOpen(true); // simulation panel: "trigger QA alert now"
     window.addEventListener("fro-sim-reset", reset);
-    return () => window.removeEventListener("fro-sim-reset", reset);
+    window.addEventListener("fro-sim-qa-alert", trigger);
+    return () => {
+      window.removeEventListener("fro-sim-reset", reset);
+      window.removeEventListener("fro-sim-qa-alert", trigger);
+    };
   }, []);
   const [qaModalOpen, setQaModalOpen] = useState(false);
   const [lastTriggeredOutput, setLastTriggeredOutput] = useState(0);

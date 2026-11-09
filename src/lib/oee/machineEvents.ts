@@ -34,7 +34,8 @@ import { reasonTagStore } from "./reasonTagStore";
 import { getLineLossFactor } from "./calibration";
 import { getLine } from "./data";
 import { densifySpans, getMachineDensity, type DenseSpan } from "./eventDensity";
-import { simStore } from "./simStore";
+import { outputMultiplier, simStore } from "./simStore";
+import { overlapsAny, trimForInjected } from "./simInject";
 
 export type EventType =
   | "run"
@@ -468,14 +469,18 @@ export function planNslEvents(
 function injectNslEvents(
   rawEvents: MachineEvent[],
   seed: string,
-  ctx: { plantId: string; machineCode: string; windowStartMs: number; orders: ProductionOrder[] },
+  ctx: { plantId: string; machineCode: string; windowStartMs: number; orders: ProductionOrder[]; shiftKey?: string },
   /** Dense mode: the NSL plan of the base schedule, cut at the ongoing event (stable while time grows). */
   fixed?: { plan: ReturnType<typeof planNslEvents>; limitSec: number },
 ): void {
   let n = 0;
+  const injSpans = simStore
+    .get()
+    .injected.filter((x) => x.shiftKey === (ctx as { shiftKey?: string }).shiftKey && x.machineCode === ctx.machineCode)
+    .map((x) => ({ startSec: x.startSec, endSec: x.startSec + x.durationSec }));
   const plans = fixed
     ? fixed.plan
-        .filter((p) => p.startSec < fixed.limitSec)
+        .filter((p) => p.startSec < fixed.limitSec && !overlapsAny(p, injSpans))
         .map((p) => {
           const endSec = Math.min(p.endSec, fixed.limitSec);
           return { ...p, endSec, durationSec: Math.max(30, endSec - p.startSec) };
@@ -649,6 +654,11 @@ export function getShiftTimeline(
         undefined,
       ];
       plcAlarm = downtimeFaults[i % downtimeFaults.length];
+      // simulation: share of PLC-mapped Downtime alarms (null = default pattern)
+      const plcRatio = simStore.get().plcDowntimeRatio;
+      if (plcRatio !== null) {
+        plcAlarm = makeRng(`${seed}:plcd:${i}`)() < plcRatio ? downtimeFaults[i % (downtimeFaults.length - 1)] : undefined;
+      }
     } else if (rType < 0.6) {
       type = "speed_loss";
       durationSec = Math.round((900 + Math.floor(rng() * 1000)) * lossFactor * 0.82);
@@ -840,11 +850,76 @@ export function getShiftTimeline(
     );
   }
 
+  // 2a. Injected demo events (simulation panel): they own their windows; other events are trimmed.
+  const injList = simStore.get().injected.filter((x) => x.shiftKey === shiftKey && x.machineCode === machineCode);
+  for (const inj of injList) {
+    const a = inj.startSec;
+    const b = Math.min(SHIFT_SECONDS, inj.startSec + inj.durationSec);
+    const trimmed = trimForInjected(rawEvents, { startSec: a, endSec: b }, (e, p) => {
+      const startSec = p.startSec ?? e.startSec;
+      const endSec = p.endSec ?? e.endSec;
+      return normalizeEventTimestamps(
+        {
+          ...e,
+          startSec,
+          endSec,
+          durationSec: endSec - startSec,
+          startAt: windowStartMs + startSec * 1000,
+          endAt: windowStartMs + endSec * 1000,
+          ...(p.endSec !== undefined ? { isOngoing: false } : {}),
+        },
+        windowStartMs,
+      );
+    });
+    const ratio = simStore.get().plcDowntimeRatio ?? 0.875;
+    const plcAlarm =
+      inj.type === "speed_loss"
+        ? undefined
+        : makeRng(`${inj.id}:plc`)() < ratio
+          ? inj.type === "downtime"
+            ? "Conveyor jam at infeed"
+            : "Product Sensing Error"
+          : undefined;
+    const resolved = resolveEventClassification(inj.type, plcAlarm, inj.id, 77);
+    const durationSec = b - a;
+    const order = a >= 18000 ? orders[1] : orders[0];
+    rawEvents.length = 0;
+    rawEvents.push(
+      ...trimmed,
+      normalizeEventTimestamps(
+        {
+          id: `${plantId}-${machineCode}-EV-${inj.id}`,
+          machineCode,
+          startSec: a,
+          endSec: b,
+          durationSec,
+          startAt: windowStartMs + a * 1000,
+          endAt: windowStartMs + b * 1000,
+          type: inj.type,
+          ...(inj.speedPct !== undefined ? { speedPct: inj.speedPct } : {}),
+          ...(plcAlarm !== undefined ? { plcAlarm } : {}),
+          orderId: order?.id || "",
+          sku: order?.sku || "",
+          productName: order?.productName || "",
+          source: resolved.source,
+          isTagged: resolved.isTagged,
+          l0Component: resolved.l0Component,
+          l1Parent: resolved.l1Parent,
+          l2CategoryName: resolved.l2CategoryName,
+          l3ReasonName: resolved.l3ReasonName,
+          causes: resolved.causes.map((c) => ({ ...c, durationSec, causeMachineCode: machineCode })),
+        },
+        windowStartMs,
+      ),
+    );
+    rawEvents.sort((x, y) => x.startSec - y.startSec);
+  }
+
   // 2b. Negative Speed Loss events (classifiable per CR 2) in the free gaps
   injectNslEvents(
     rawEvents,
     seed,
-    { plantId, machineCode, windowStartMs, orders },
+    { plantId, machineCode, windowStartMs, orders, shiftKey },
     nslFixed
       ? {
           plan: nslFixed,
@@ -962,6 +1037,12 @@ export function getShiftTimeline(
         unitsInWindow = Math.round((targetUnitsInWindow * pct) / 100);
         speedLossSec += WINDOW_SEC * (1 - pct / 100);
       }
+    }
+
+    // Simulation: output vs target (%) scales Effective and Speed Loss windows (not NSL, Minor Stop, Downtime)
+    const mult = outputMultiplier(shift.startSec, wStart);
+    if (mult !== 1 && ((type === "run" && activeEv?.type !== "negative_speed_loss") || type === "speed_loss")) {
+      unitsInWindow = unitsInWindow * mult;
     }
 
     // Accumulate production & rejects

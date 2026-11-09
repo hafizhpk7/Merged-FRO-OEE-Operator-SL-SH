@@ -17,7 +17,7 @@ import {
 } from "@/lib/oee/machineEvents";
 import { getShiftInfoAt } from "@/lib/oee/shiftClock";
 import { useViewShift } from "@/lib/oee/viewShiftStore";
-import { useSimWindowBucket } from "@/lib/oee/useSimTick";
+import { useSimDataVersion, useSimWindowBucket } from "@/lib/oee/useSimTick";
 import { getLine } from "@/lib/oee/data";
 
 export const Route = createFileRoute("/operator/$plantId/$lineId/reason")({
@@ -72,10 +72,11 @@ function OperatorReasonInner() {
   // shift grows with the central clock, one sampling window (30 s simulated) at a time.
   const view = useViewShift();
   const bucket = useSimWindowBucket();
+  const dataVer = useSimDataVersion();
   const rawShift = search.shift !== undefined ? getShiftInfoAt(search.shift) : view.info;
   const elapsedKey = Math.floor(rawShift.elapsedSec / 30) * 30;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const shiftInfo = useMemo(() => ({ ...rawShift, elapsedSec: elapsedKey }), [rawShift.startSec, elapsedKey, bucket]);
+  const shiftInfo = useMemo(() => ({ ...rawShift, elapsedSec: elapsedKey }), [rawShift.startSec, elapsedKey, bucket, dataVer]);
   const isPastShift = !rawShift.isCurrent && rawShift.elapsedSec >= 28800;
 
   // Shift timeline and snapshot for selected machine (re-computed when version changes)

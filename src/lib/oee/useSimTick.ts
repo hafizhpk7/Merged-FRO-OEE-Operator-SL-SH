@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { simStore } from "./simStore";
 import { getNowMs } from "./shiftClock";
 
 /**
@@ -16,4 +17,9 @@ export function useSimWindowBucket(windowSec = 30): number {
     return () => clearInterval(id);
   }, [windowSec]);
   return bucket;
+}
+
+/** Version of the simulation data (output rules, injected events, SRR, PO preset, density, ...). Use it in memo deps. */
+export function useSimDataVersion(): number {
+  return useSyncExternalStore(simStore.subscribe, () => simStore.dataVersion(), () => 0);
 }

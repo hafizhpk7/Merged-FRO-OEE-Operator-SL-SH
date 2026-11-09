@@ -5,6 +5,7 @@ import { useWorkOrder } from "@/lib/oee/workOrderStore";
 import { getNowMs, getShiftInfo, subscribeClock } from "@/lib/oee/shiftClock";
 import { useViewShift } from "@/lib/oee/viewShiftStore";
 import { TARGET_WINDOW_SEC } from "@/lib/oee/targetEngine";
+import { useSimDataVersion } from "@/lib/oee/useSimTick";
 
 /**
  * Target snapshot of a line, refreshed every 30 s sampling window (TG-07), on a clock jump, a
@@ -13,6 +14,7 @@ import { TARGET_WINDOW_SEC } from "@/lib/oee/targetEngine";
 export function useTargetSnapshot(plantId: string, lineId: string): TargetSnapshot {
   const mode = useSrrMode();
   const view = useViewShift();
+  const dataVer = useSimDataVersion();
   const shiftKey = view.info.shiftKey;
   const wo = useWorkOrder(lineId, shiftKey);
   const [, setTick] = useState(0);
@@ -30,6 +32,6 @@ export function useTargetSnapshot(plantId: string, lineId: string): TargetSnapsh
   return useMemo(
     () => getTargetSnapshot(plantId, lineId, mode, getNowMs(), view.isPast ? view.info.startSec : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [plantId, lineId, mode, view.isPast ? 0 : bucket, shiftKey, wo.status, wo.finishedAtSec, getShiftInfo().startSec, view.info.startSec],
+    [plantId, lineId, mode, view.isPast ? 0 : bucket, shiftKey, wo.status, wo.finishedAtSec, getShiftInfo().startSec, view.info.startSec, dataVer],
   );
 }

@@ -1,4 +1,4 @@
-export const BUILD_ID = "r48 · 09 Nov 2026 WIB · SIM-core";
+export const BUILD_ID = "r49 · 09 Nov 2026 WIB · SIM-panel";
 
 export const FEATURES = {
   routeTreeManualSync: true,
@@ -123,6 +123,14 @@ export const FEATURES = {
   simEventDensity: true,
   simDenseUsability: true,
   simSelfTest: true,
+  simPanel: true,
+  simPanelOutputSlider: true,
+  simPanelSrrControls: true,
+  simPanelEventInject: true,
+  simPanelPoScenarios: true,
+  simPanelExportImport: true,
+  simActiveBadgeSlSh: true,
+  simPanelSelfTest: true,
 };
 
 if (typeof window !== "undefined") {

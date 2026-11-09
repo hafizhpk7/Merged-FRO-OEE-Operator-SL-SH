@@ -654,6 +654,8 @@ export const rejectStore = {
     note?: string;
     shiftKey: string;
     l2Id?: L2Id;
+    /** "qa" (default) for QA inspection rejects; "manual" for simulation reject bursts. */
+    source?: "qa" | "manual";
   }) {
     const state = getStoredState();
     entrySeq += 1;
@@ -667,7 +669,7 @@ export const rejectStore = {
       l3Id: payload.rejectTypeId,
       l2Id: l2OfEntry(payload.rejectTypeId, payload.l2Id),
       qty: payload.qty,
-      source: "qa",
+      source: payload.source ?? "qa",
       at: payload.at,
       ...(payload.note ? { note: payload.note } : {}),
       createdAt: getNowMs(),

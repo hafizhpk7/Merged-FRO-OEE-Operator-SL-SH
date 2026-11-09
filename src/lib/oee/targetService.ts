@@ -7,9 +7,10 @@
  * Planned Downtime windows of the engine are excluded from scheduled time; D, MS, SL stay in.
  */
 import { getShiftTimeline, getMachineProfile } from "./machineEvents";
-import { getLineOperationalMode, getLineSrr, getMachineStandard, getRepresentativeAsset } from "./assetMaster";
+import { getLineOperationalMode, getLineSrr, getMachineStandard, getRepresentativeAsset, hasSrrLineOverride } from "./assetMaster";
 import { getShiftPoPlan, type ShiftPoPlan } from "./poMaster";
 import { getNowMs, getShiftInfo, getShiftInfoAt, SHIFT_SECONDS, type ShiftInfo } from "./shiftClock";
+import { simStore } from "./simStore";
 import {
   computeHourly,
   computeTargets,
@@ -58,14 +59,15 @@ export function getTargetSnapshot(
       ? Math.min(nowMs, finishedMs)
       : nowMs;
   const bucket = Math.floor(effectiveMs / (TARGET_WINDOW_SEC * 1000)); // refresh every 30 s window (TG-07)
-  const cacheKey = `${plantId}:${lineId}:${mode}:${shift.shiftKey}:${bucket}:${shift.startSec}:${finishedMs !== null}:${getLineSrr(plantId, lineId)}`;
+  const cacheKey = `${plantId}:${lineId}:${mode}:${shift.shiftKey}:${bucket}:${shift.startSec}:${finishedMs !== null}:${getLineSrr(plantId, lineId)}:${simStore.dataVersion()}`;
   const hit = cache.get(cacheKey);
   if (hit) return hit;
 
   const plan = getShiftPoPlan(lineId, shift);
   const machine = getRepresentativeAsset(plantId, lineId);
   const ideal = Math.max(1, getMachineStandard(plantId, lineId, machine) ?? getMachineProfile(machine).idealRatePpm);
-  const srrLine = plan.srrLine ?? getLineSrr(plantId, lineId);
+  // an SRR Line override from the simulation panel wins over the scenario's own SRR Line
+  const srrLine = hasSrrLineOverride(plantId, lineId) ? getLineSrr(plantId, lineId) : (plan.srrLine ?? getLineSrr(plantId, lineId));
 
   const elapsed = Math.min(SHIFT_SECONDS, Math.max(0, Math.floor(effectiveMs / 1000) - shift.startSec));
   const revealedSec = Math.floor(elapsed / TARGET_WINDOW_SEC) * TARGET_WINDOW_SEC;

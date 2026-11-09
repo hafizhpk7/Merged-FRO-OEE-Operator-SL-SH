@@ -1,5 +1,6 @@
 
 import { getNow, isShiftOverrideActive, SHIFT_SECONDS, type ShiftInfo } from "./shiftClock";
+import { simStore } from "./simStore";
 
 /**
  * Process Order (PO) Master Data per Line (§3.1)
@@ -138,8 +139,21 @@ export function buildMultiSkuScenario(shift: ShiftInfo): ShiftPoPlan {
  * master); with the 06:30 shift override the multi-SKU demo scenario runs instead.
  */
 export function getShiftPoPlan(lineId: string, shift: ShiftInfo): ShiftPoPlan {
+  const plan = basePoPlan(lineId, shift);
+  // Simulation: SRR SKU overrides per PO number (null = no standard defined for the SKU)
+  const skuOv = simStore.get().srrSkuOverrides;
+  if (Object.keys(skuOv).length === 0) return plan;
+  return {
+    ...plan,
+    segments: plan.segments.map((s) => (s.poNumber in skuOv ? { ...s, srr: skuOv[s.poNumber] ?? null } : s)),
+  };
+}
+
+function basePoPlan(lineId: string, shift: ShiftInfo): ShiftPoPlan {
   if (isShiftOverrideActive() && shift.startMinuteOfDay === 6 * 60 + 30) return buildMultiSkuScenario(shift);
   const po = getPoForLine(lineId);
+  // Simulation preset "PO continued from the previous shift": the PO already has output (S, TG-02)
+  const carry = simStore.get().poPreset === "continued" ? Math.round(po.mpq * 0.35) : 0;
   return {
     shiftKey: shift.shiftKey,
     scenario: "default",
@@ -155,7 +169,7 @@ export function getShiftPoPlan(lineId: string, shift: ShiftInfo): ShiftPoPlan {
         srr: po.skuStandardRunRate,
         startSec: 0,
         stopSec: SHIFT_SECONDS,
-        carryActual: 0,
+        carryActual: carry,
       },
     ],
   };

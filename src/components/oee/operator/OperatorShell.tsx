@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { OperatorSidebar } from "./OperatorSidebar";
 import { OperatorHeader } from "./OperatorHeader";
 import { SrrBlockedModal } from "./SrrBlockedModal";
+import { SimulationPanel } from "./SimulationPanel";
 
 export function OperatorShell({
   plantId,
@@ -19,6 +20,7 @@ export function OperatorShell({
       <OperatorSidebar plantId={plantId} lineId={lineId} />
       <div className="flex flex-1 flex-col pl-16 min-w-0">
         <div className="container mx-auto max-w-7xl p-6 space-y-4">
+          <SimulationPanel plantId={plantId} lineId={lineId} />
           <OperatorHeader
             plantId={plantId}
             lineId={lineId}

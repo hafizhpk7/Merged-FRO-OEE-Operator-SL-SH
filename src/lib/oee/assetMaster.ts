@@ -121,6 +121,10 @@ export function getLineSrr(plantId: string, lineId: string): number | null {
   return getLineAssetMaster(plantId, lineId).srrLine;
 }
 
+export function hasSrrLineOverride(plantId: string, lineId: string): boolean {
+  return `${plantId}:${lineId}` in simStore.get().srrOverrides;
+}
+
 export function getRepresentativeAsset(plantId: string, lineId: string): string {
   return getLineAssetMaster(plantId, lineId).representativeAsset;
 }

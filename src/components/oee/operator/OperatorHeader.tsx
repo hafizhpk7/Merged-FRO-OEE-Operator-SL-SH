@@ -94,73 +94,15 @@ export function OperatorHeader({
           </div>
           <div className="flex items-center gap-4">
             <span className="font-mono text-xs">{currentTime}</span>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  data-testid="avatar-menu"
-                  aria-label="Operator menu"
-                  className={`flex size-7 items-center justify-center rounded-full bg-amber-500 font-semibold text-white text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                    demoOn ? "ring-2 ring-red-500 ring-offset-1" : ""
-                  }`}
-                >
-                  K
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-60">
-                <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                  Dev / demo clock {demoOn ? "(ON)" : ""}
-                </DropdownMenuLabel>
-                {REMINDER_TRIGGER_MINUTES.map((m) => (
-                  <DropdownMenuItem
-                    key={m}
-                    data-testid={`demo-jump-${m}`}
-                    onSelect={() => jumpToShiftEnd(m)}
-                    className="text-xs"
-                  >
-                    Demo: jump to T-{m}
-                  </DropdownMenuItem>
-                ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                  Multi-SKU shift (CR 5) {shiftOverride ? "(ON)" : ""}
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  data-testid="demo-multisku"
-                  onSelect={() => {
-                    setShiftStartOverrideMin(390); // shifts start at :30 (06:30-14:30)
-                    jumpToWibTime(10, 30);
-                  }}
-                  className="text-xs"
-                >
-                  Demo: multi-SKU shift 06:30-14:30 (now 10:30)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  data-testid="demo-standard-shifts"
-                  disabled={!shiftOverride}
-                  onSelect={() => setShiftStartOverrideMin(null)}
-                  className="text-xs"
-                >
-                  Standard shifts (07:00 / 15:00 / 23:00)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  data-testid="demo-reset-wo"
-                  onSelect={() => workOrderStore.reset()}
-                  className="text-xs"
-                >
-                  Reset work order state
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  data-testid="demo-reset"
-                  disabled={!demoOn}
-                  onSelect={() => setDemoClockOffsetMs(null)}
-                  className="text-xs"
-                >
-                  Reset demo clock
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <span
+              data-testid="avatar-menu"
+              aria-label="Operator"
+              className={`flex size-7 items-center justify-center rounded-full bg-amber-500 font-semibold text-white text-xs ${
+                demoOn ? "ring-2 ring-red-500 ring-offset-1" : ""
+              }`}
+            >
+              K
+            </span>
           </div>
         </div>
 
