@@ -1,4 +1,4 @@
-export const BUILD_ID = "r55 · 10 Nov 2026 WIB · card-gaps";
+export const BUILD_ID = "r56 · 10 Nov 2026 WIB · idw-only-guards";
 
 export const FEATURES = {
   routeTreeManualSync: true,
@@ -151,6 +151,7 @@ export const FEATURES = {
   cardsFillSpace: true,
   cardSectionGapToken: true,
   dashboardGapAudit: true,
+  idwOnlyNoReasonNoReminder: true,
 };
 
 if (typeof window !== "undefined") {

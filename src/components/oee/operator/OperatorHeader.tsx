@@ -58,7 +58,8 @@ export function OperatorHeader({
   const version = useDashboardVersion();
   const opMode = useLineOperationalMode(plantId, lineId);
   const srrMissing = opMode.reason === "srr-line-missing";
-  const reasonBlocked = srrMissing && SRR_BLOCKED_TABS.includes("reason");
+  // IDW-only lines (not a SCADA pilot line, or SRR Line not set) cannot open Reason
+  const reasonBlocked = opMode.mode !== "full" && SRR_BLOCKED_TABS.includes("reason");
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const onDashboard = pathname === `/operator/${plantId}/${lineId}` || pathname === `/operator/${plantId}/${lineId}/`;
   const legacy = version === "old" && onDashboard;

@@ -31,7 +31,7 @@ export function OperatorShell({
         {...(headerExtra ? { extra: headerExtra } : {})}
       />
       <div className="flex min-w-0 flex-1 flex-col">{children}</div>
-      <SrrBlockedModal />
+      <SrrBlockedModal plantId={plantId} lineId={lineId} />
     </OperatorFrame>
   );
 }

@@ -17,7 +17,9 @@ function OperatorDashboardPage() {
   const view = useViewShift();
   const shiftKey = view.info.shiftKey;
   const legacy = useDashboardVersion() === "old";
-  const srrMissing = useLineOperationalMode(plantId, lineId).reason === "srr-line-missing";
+  const opMode = useLineOperationalMode(plantId, lineId);
+  const srrMissing = opMode.reason === "srr-line-missing";
+  const idwOnly = opMode.mode !== "full"; // no OEE: no shift-change reminder
 
   return (
     <OperatorShell
@@ -27,7 +29,7 @@ function OperatorDashboardPage() {
     >
       <div className="page-fill">
         <OperatorDashboardContent plantId={plantId} lineId={lineId} shiftKey={shiftKey} />
-        {!srrMissing && !legacy && !view.isPast && <ShiftReminderHost plantId={plantId} lineId={lineId} />}
+        {!idwOnly && !legacy && !view.isPast && <ShiftReminderHost plantId={plantId} lineId={lineId} />}
       </div>
     </OperatorShell>
   );

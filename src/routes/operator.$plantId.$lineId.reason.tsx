@@ -33,12 +33,12 @@ export const Route = createFileRoute("/operator/$plantId/$lineId/reason")({
   component: OperatorReasonPage,
 });
 
-/** SRR Line missing: Reason is blocked (also by direct URL); stay on / go back to the Dashboard with the modal. */
+/** IDW-only line (not pilot, or SRR Line missing): Reason is blocked (also by direct URL); stay on / go back to the Dashboard with the modal. */
 function OperatorReasonPage() {
   const { plantId, lineId } = Route.useParams();
   const navigate = useNavigate();
-  const blocked =
-    useLineOperationalMode(plantId, lineId).reason === "srr-line-missing" && SRR_BLOCKED_TABS.includes("reason");
+  // IDW-only: not a SCADA pilot line, or the SRR Line is not set
+  const blocked = useLineOperationalMode(plantId, lineId).mode !== "full" && SRR_BLOCKED_TABS.includes("reason");
   useEffect(() => {
     if (!blocked) return;
     srrBlockStore.open();
