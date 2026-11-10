@@ -85,8 +85,8 @@ export function OeeCard({
 
   return (
     <>
-      <div className="rounded-lg p-4" style={{ background: "var(--fro-oee-card-bg)" }} data-testid="oee-card">
-        <div className="flex flex-col gap-4">
+      <div className="flex h-full flex-col rounded-lg p-4" style={{ background: "var(--fro-oee-card-bg)" }} data-testid="oee-card">
+        <div className="flex flex-1 flex-col gap-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-base font-semibold">Overall Equipment Effectiveness</p>
             <div className="flex shrink-0 items-center gap-2">
@@ -112,7 +112,7 @@ export function OeeCard({
           </div>
 
           {/* Donut */}
-          <div className="flex justify-center py-2">
+          <div className="flex flex-1 items-center justify-center py-2">
             <div className="relative flex size-[180px] items-center justify-center" data-testid="oee-donut">
               <svg viewBox="0 0 120 120" className="absolute inset-0 size-full -rotate-90" aria-hidden>
                 <circle cx="60" cy="60" r="52" fill="none" strokeWidth="9" stroke="var(--fro-track)" />

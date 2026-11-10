@@ -1,4 +1,4 @@
-export const BUILD_ID = "r53 · 10 Nov 2026 WIB · FRO-design-new-view";
+export const BUILD_ID = "r54 · 10 Nov 2026 WIB · header-controls";
 
 export const FEATURES = {
   routeTreeManualSync: true,
@@ -145,6 +145,10 @@ export const FEATURES = {
   legacyRunRateSelfTest: true,
   froDesignNewView: true,
   legacyCompareScript: true,
+  headerControlsBesideShift: true,
+  noPauseOnScadaLines: true,
+  reasonWithoutOeeStrip: true,
+  cardsFillSpace: true,
 };
 
 if (typeof window !== "undefined") {

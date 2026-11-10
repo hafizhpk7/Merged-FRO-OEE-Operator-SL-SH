@@ -140,7 +140,7 @@ export function LegacyDashboardContent({
           barTestId="legacy-po-bar"
         />
         <QaCounters testId="legacy-qa" qaStats={qaStats} icon={<ShieldCheck className="size-3.5" />} />
-        <div className="mt-auto flex flex-col gap-4">
+        <div className="flex flex-col gap-4">
           <MulaiRow start={startStr} sisa={sisaStr} icon={<Clock />} testId="legacy-sisa" />
         </div>
       </FroCard>
@@ -158,7 +158,7 @@ export function LegacyDashboardContent({
           barTestId="legacy-shift-bar"
         />
         <RunRateRow testId="legacy-rr-shift" title="Shift run rate line" target={shiftTarget} actual={shiftActual} standard={lineStd} />
-        <div>
+        <div className="flex flex-1 flex-col">
           <OeeCard plantId={plantId} lineId={lineId} rejectCount={totalReject} ownToggle />
         </div>
       </FroCard>

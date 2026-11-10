@@ -74,7 +74,7 @@ export function FroCard({ icon, tone, title, testId, gap = "gap-4", children }: 
         </div>
         <hr className="border-0 border-t border-border" />
       </div>
-      <div className={`flex flex-1 flex-col pt-4 ${gap}`}>{children}</div>
+      <div className={`flex flex-1 flex-col justify-between pt-4 ${gap}`}>{children}</div>
     </section>
   );
 }

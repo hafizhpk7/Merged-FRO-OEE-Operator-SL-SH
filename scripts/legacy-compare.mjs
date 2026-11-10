@@ -28,7 +28,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const LABELS = [
   "Beranda", "Produksi", "Penimbangan", "Pengolahan", "Pengemasan", "Manajemen", "Manajemen Produksi",
   "Manajemen Kemasan", "Manajemen Bulk", "Manajemen Kualitas", "Manajemen Jadwal", "Manajemen User", "Master", "Master Data",
-  "Overall Equipment Effectiveness", "Menu", "Pause Work Order", "Finish Work Order", "Dashboard", "Reject", "Reason", "List Shift", "Current",
+  "Overall Equipment Effectiveness", "Menu", "Finish Work Order", "Dashboard", "Reject", "Reason", "List Shift", "Current",
   "Inline Device Weigher", "Counter", "Counter Detail", "Innerbox", "Karbox", "Pallet", "OP Karbox", "OP Innerbox", "Print Label",
   "Test Print", "Broken Inner Box", "Broken Cart Box", "Autonomous Mobile Robot", "Request Material", "FG Release A", "FG Release B", "Refresh",
   "Output IDW", "Output OEE", "Gap", "Total MPQ",
@@ -164,7 +164,6 @@ function measure() {
     chipPlant: S(byText("Liquid Plant"), "box"),
     chipZone: S(byText("LIQUID A"), "box"),
     chipLine: S(byText(/^(JAP03|TUP01)$/), "box"),
-    btnPause: S(closestBtn(byText("Pause Work Order")), "box"),
     btnFinish: S(closestBtn(byText("Finish Work Order")), "box"),
     tabBar: S(tabBar, "box"),
     tabActive: S(closestBtn(dash), "box"),
@@ -245,8 +244,12 @@ function compare(ref, app, tag, vh) {
     if (!rb) continue;
     if (!ab) { diffs.push(`[${tag}] box ${k}: not found in app`); continue; }
     let d = ["x", "y", "w", "h"].filter((p) => Math.abs(ab[p] - rb[p]) > BOX_TOL);
-    if (stretched && ["idwCard", "poCard", "shiftCard"].includes(k) && d.includes("h") && ab.h > rb.h) {
+    if (stretched && ["idwCard", "poCard", "shiftCard", "oeeCard"].includes(k) && d.includes("h") && ab.h > rb.h) {
       deviations.push(`[${tag}] box ${k}: h app ${ab.h} vs ref ${rb.h} (cards stretch to fill the viewport)`);
+      d = d.filter((p) => p !== "h");
+    }
+    if (!stretched && k === "oeeCard" && d.includes("h") && ab.h > rb.h) {
+      deviations.push(`[${tag}] box oeeCard: h app ${ab.h} vs ref ${rb.h} (the OEE card grows into the free space of its card, no blank area)`);
       d = d.filter((p) => p !== "h");
     }
     if (stretched && k === "footer" && d.includes("y") && ab.y > rb.y - 400) {

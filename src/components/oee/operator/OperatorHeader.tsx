@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   AlertCircle,
@@ -21,7 +21,7 @@ import { workOrderStore, useWorkOrder } from "@/lib/oee/workOrderStore";
 import { useLineOperationalMode } from "@/lib/oee/assetMaster";
 import { useViewShift } from "@/lib/oee/viewShiftStore";
 import { useDashboardVersion } from "@/lib/oee/dashboardVersionStore";
-import { SRR_BLOCKED_TABS } from "@/lib/oee/config";
+import { SRR_BLOCKED_TABS, isOeeActiveLine } from "@/lib/oee/config";
 import { srrBlockStore } from "@/lib/oee/srrBlockStore";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getLine } from "@/lib/oee/data";
@@ -40,11 +40,14 @@ export function OperatorHeader({
   lineId,
   onBeforeFinishWorkOrder,
   onBeforeShiftChange,
+  extra,
 }: {
   plantId: string;
   lineId: string;
   onBeforeFinishWorkOrder?: (proceed: () => void) => void;
   onBeforeShiftChange?: (proceed: () => void) => void;
+  /** Controls beside LIST SHIFT (same section). */
+  extra?: ReactNode;
 }) {
   const [finishModalOpen, setFinishModalOpen] = useState(false);
   const [pauseModalOpen, setPauseModalOpen] = useState(false);
@@ -59,6 +62,8 @@ export function OperatorHeader({
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const onDashboard = pathname === `/operator/${plantId}/${lineId}` || pathname === `/operator/${plantId}/${lineId}/`;
   const legacy = version === "old" && onDashboard;
+  // the five SCADA pilot lines (J2: TUP01, TUP13, TUP14, BOP15, BOP16) have no Pause Work Order button
+  const showPause = !isOeeActiveLine(plantId, lineId);
 
   const line =
     getLine(plantId, "A", lineId) || getLine(plantId, "B", lineId) || getLine(plantId, "C", lineId);
@@ -149,6 +154,7 @@ export function OperatorHeader({
                 Summarization
               </Link>
             )}
+            {showPause && (
             <button
               type="button"
               data-testid="pause-wo"
@@ -162,6 +168,7 @@ export function OperatorHeader({
               {wo.status === "paused" ? <PlayCircle /> : <PauseCircle />}
               {wo.status === "paused" ? "Resume Work Order" : "Pause Work Order"}
             </button>
+            )}
             <button
               type="button"
               data-testid="finish-wo"
@@ -203,7 +210,10 @@ export function OperatorHeader({
               </Link>
             )}
           </nav>
-          <ShiftSelect {...(onBeforeShiftChange ? { onBeforeChange: onBeforeShiftChange } : {})} />
+          <div className="flex w-full min-w-0 flex-wrap items-end justify-end gap-3 sm:w-auto" data-testid="header-right">
+            {extra}
+            <ShiftSelect {...(onBeforeShiftChange ? { onBeforeChange: onBeforeShiftChange } : {})} />
+          </div>
         </div>
       </section>
 

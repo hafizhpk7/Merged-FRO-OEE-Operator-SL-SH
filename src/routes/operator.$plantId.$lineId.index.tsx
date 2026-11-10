@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { OperatorShell } from "@/components/oee/operator/OperatorShell";
-import { OperatorSelectors } from "@/components/oee/operator/OperatorSelectors";
 import { OperatorDashboardContent } from "@/components/oee/operator/OperatorDashboardContent";
 import { ShiftReminderHost } from "@/components/oee/operator/ShiftReminderHost";
 import { SrrSwitch } from "@/components/oee/operator/SrrSwitch";
@@ -21,13 +20,12 @@ function OperatorDashboardPage() {
   const srrMissing = useLineOperationalMode(plantId, lineId).reason === "srr-line-missing";
 
   return (
-    <OperatorShell plantId={plantId} lineId={lineId}>
+    <OperatorShell
+      plantId={plantId}
+      lineId={lineId}
+      {...(srrMissing || legacy ? {} : { headerExtra: <SrrSwitch plantId={plantId} lineId={lineId} /> })}
+    >
       <div className="page-fill">
-        <OperatorSelectors
-          plantId={plantId}
-          lineId={lineId}
-          extra={srrMissing || legacy ? undefined : <SrrSwitch plantId={plantId} lineId={lineId} />}
-        />
         <OperatorDashboardContent plantId={plantId} lineId={lineId} shiftKey={shiftKey} />
         {!srrMissing && !legacy && !view.isPast && <ShiftReminderHost plantId={plantId} lineId={lineId} />}
       </div>

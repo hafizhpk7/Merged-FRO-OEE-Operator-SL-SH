@@ -52,7 +52,7 @@ export function ShiftPerformanceCard({
         formula="jumlah per segmen SKU"
       />
 
-      <div>
+      <div className="flex flex-1 flex-col">
         <OeeCard plantId={plantId} lineId={lineId} rejectCount={totalReject} />
       </div>
     </FroCard>

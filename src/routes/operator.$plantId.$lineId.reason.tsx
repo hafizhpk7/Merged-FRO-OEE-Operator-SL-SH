@@ -5,7 +5,6 @@ import { srrBlockStore } from "@/lib/oee/srrBlockStore";
 import { useEffect, useState, useMemo } from "react";
 import { OperatorShell } from "@/components/oee/operator/OperatorShell";
 import { OperatorSelectors } from "@/components/oee/operator/OperatorSelectors";
-import { OperatorOeeStrip } from "@/components/oee/operator/OperatorOeeStrip";
 import { ProductionTimelineCard } from "@/components/oee/operator/ProductionTimelineCard";
 import { ClassifyModal } from "@/components/oee/operator/ClassifyModal";
 import { PendingListModal } from "@/components/oee/operator/PendingListModal";
@@ -140,9 +139,7 @@ function OperatorReasonInner() {
       lineId={lineId}
       onBeforeFinishWorkOrder={(proceed) => handleTriggerShiftFinish(proceed)}
       onBeforeShiftChange={(proceed) => handleTriggerShiftFinish(proceed)}
-    >
-      <div className="page-fill">
-        {/* Selectors Row */}
+      headerExtra={
         <OperatorSelectors
           plantId={plantId}
           lineId={lineId}
@@ -150,9 +147,9 @@ function OperatorReasonInner() {
           selectedMachine={selectedMachine}
           onMachineChange={setSelectedMachine}
         />
-
-        {/* Read-Only OEE Strip */}
-        <OperatorOeeStrip snapshot={timeline.snapshot} />
+      }
+    >
+      <div className="page-fill">
 
         {/* Production Timeline Card */}
         <ProductionTimelineCard

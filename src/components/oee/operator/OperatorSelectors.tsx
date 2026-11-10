@@ -1,9 +1,10 @@
 import { Cpu } from "lucide-react";
 import { getLine } from "@/lib/oee/data";
+import { label } from "./froUi";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 /**
- * Page-level controls under the header card: optional extra controls (Dashboard: SRR switch and
+ * Controls shown inside the header card, left of LIST SHIFT: optional extra controls (Dashboard: SRR switch and
  * Realisasi per jam) and the machine select (Reject and Reason). The LIST SHIFT select lives in the
  * header card (ShiftSelect).
  */
@@ -37,16 +38,16 @@ export function OperatorSelectors({
 
   if (!extra && !showMachineSelect) return null;
   return (
-    <div className="flex flex-wrap items-center justify-end gap-3 py-1">
+    <div className="flex flex-wrap items-end justify-end gap-3" data-testid="header-controls">
       {extra}
       {showMachineSelect && (
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            <Cpu className="size-3.5" />
+        <div className="flex w-full flex-col gap-1 sm:w-[250px]">
+          <label className={`flex items-center gap-1.5 ${label}`}>
+            <Cpu className="size-3" />
             LIST MACHINE
           </label>
           <Select value={selectedMachine || machines[0]?.id || "ALL"} onValueChange={(val) => onMachineChange?.(val)}>
-            <SelectTrigger data-testid="list-machine" className="h-8 w-60 max-w-full bg-card text-xs font-medium border-border">
+            <SelectTrigger data-testid="list-machine" className="h-8 w-full rounded-lg bg-card text-xs font-medium border-border">
               <SelectValue placeholder="Select machine" />
             </SelectTrigger>
             <SelectContent align="end">

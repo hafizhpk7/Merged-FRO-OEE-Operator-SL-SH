@@ -99,7 +99,7 @@ export function ProcessOrderCard({
 
       <QaCounters testId="po-qa" qaStats={qaStats} icon={<ShieldCheck className="size-3.5" />} />
 
-      <div className="mt-auto flex flex-col gap-4">
+      <div className="flex flex-col gap-4">
         <MulaiRow start={startDateStr} sisa={sisaStr} icon={<Clock />} testId="po-sisa" />
       </div>
     </FroCard>

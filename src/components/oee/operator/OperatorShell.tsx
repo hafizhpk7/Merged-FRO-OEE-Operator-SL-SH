@@ -9,12 +9,15 @@ export function OperatorShell({
   lineId,
   onBeforeFinishWorkOrder,
   onBeforeShiftChange,
+  headerExtra,
   children,
 }: {
   plantId: string;
   lineId: string;
   onBeforeFinishWorkOrder?: (proceed: () => void) => void;
   onBeforeShiftChange?: (proceed: () => void) => void;
+  /** Controls placed beside LIST SHIFT in the header card (SRR switch, Realisasi per jam, LIST MACHINE). */
+  headerExtra?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -25,6 +28,7 @@ export function OperatorShell({
         lineId={lineId}
         {...(onBeforeFinishWorkOrder ? { onBeforeFinishWorkOrder } : {})}
         {...(onBeforeShiftChange ? { onBeforeShiftChange } : {})}
+        {...(headerExtra ? { extra: headerExtra } : {})}
       />
       <div className="flex min-w-0 flex-1 flex-col">{children}</div>
       <SrrBlockedModal />

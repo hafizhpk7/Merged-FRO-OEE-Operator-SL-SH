@@ -19,15 +19,20 @@ function OperatorRejectPage() {
   const shiftKey = useViewShift().info.shiftKey;
 
   return (
-    <OperatorShell plantId={plantId} lineId={lineId}>
-      <div className="page-fill">
+    <OperatorShell
+      plantId={plantId}
+      lineId={lineId}
+      headerExtra={
         <OperatorSelectors
-          plantId={plantId}
-          lineId={lineId}
-          showMachineSelect={true}
-          selectedMachine={selectedMachine}
-          onMachineChange={setSelectedMachine}
+            plantId={plantId}
+            lineId={lineId}
+            showMachineSelect={true}
+            selectedMachine={selectedMachine}
+            onMachineChange={setSelectedMachine}
         />
+      }
+    >
+      <div className="page-fill">
         <RejectPageContent
           plantId={plantId}
           lineId={lineId}
