@@ -1,4 +1,4 @@
-export const BUILD_ID = "r54 · 10 Nov 2026 WIB · header-controls";
+export const BUILD_ID = "r55 · 10 Nov 2026 WIB · card-gaps";
 
 export const FEATURES = {
   routeTreeManualSync: true,
@@ -149,6 +149,8 @@ export const FEATURES = {
   noPauseOnScadaLines: true,
   reasonWithoutOeeStrip: true,
   cardsFillSpace: true,
+  cardSectionGapToken: true,
+  dashboardGapAudit: true,
 };
 
 if (typeof window !== "undefined") {

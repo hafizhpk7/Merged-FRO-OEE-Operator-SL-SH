@@ -27,7 +27,7 @@ export function ShiftPerformanceCard({
         : "-";
 
   return (
-    <FroCard testId="shift-card" tone="shift" icon={<BarChart3 />} title="Shift Performance" gap="gap-6">
+    <FroCard testId="shift-card" tone="shift" icon={<BarChart3 />} title="Shift Performance">
       <div className="flex flex-col gap-0.5">
         <p className={label} data-testid="shift-title">
           {snap.shift.label.replace(" WIB", "")} | {formatTimeWib(snap.shift.startSec)} - {formatTimeWib(snap.shift.endSec)}

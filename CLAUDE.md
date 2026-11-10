@@ -43,3 +43,9 @@ Other reference files: `roadmap.md`, `AGENTS.md` (Lovable git-history rule), `sr
 - Work on branch `cr-adjustments`; one commit per prompt. Before coding: list conflicts with the current implementation, then proceed with the defaults stated in the prompt.
 - New route files: register them (or keep routeTree.gen.ts in sync). Bump BUILD_ID and add a FEATURES flag per change set.
 - Done = build + tsc clean for touched files + runOeeSelfTest/runParityAudit pass + Playwright smoke script (if present) with no console errors. Report real outputs.
+
+## Layout
+- Free height is absorbed by a designated growable region, never distributed between sections. No justify-between/around/evenly, no flex-1 spacer elements, no margin-block:auto between sections inside the dashboard cards.
+- One spacing system: --fro-section-gap (16 px), --fro-section-gap-tight (12 px), --fro-row-gap (8 px) in src/styles/legacy-fro-tokens.css. Cards are top-aligned columns; each card has ONE growable region (capped growth) in src/components/oee/operator/froUi.tsx.
+- At 3 columns (>= 1280 px) the cards hug their content (natural heights differ by more than 80 px); 1-2 columns stretch and the growable regions absorb the height.
+- Check with `node scripts/dashboard-gap-audit.mjs --tag=after` (MAX_SECTION_GAP = 24 px). Must report zero flagged gaps.

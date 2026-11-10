@@ -141,7 +141,7 @@ export function OperatorDashboardContent({
         </div>
 
         {/* IDW Block Only */}
-        <div className="grid w-full flex-1 grid-cols-1 items-stretch md:max-w-xl">
+        <div className="grid w-full grid-cols-1 items-start md:max-w-xl">
           <IdwBlock plantId={plantId} lineId={lineId} outputOee={outputOee} totalMpq={poInfo.mpq} />
         </div>
       </div>

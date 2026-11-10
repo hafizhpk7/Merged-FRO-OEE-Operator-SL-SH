@@ -101,7 +101,7 @@ export function IdwBlock({ plantId, lineId: _lineId, outputOee, totalMpq }: { pl
         </div>
       )}
 
-      <div className="flex flex-col">
+      <div className="flex flex-1 flex-col">
         <OutputRow name="Output IDW" value={num(outputIdw)} testId="legacy-output-idw" />
         <OutputRow name="Output OEE" value={num(outputOee)} testId="legacy-output-oee" />
         <OutputRow name="Gap" value={`${gapPct}%`} />

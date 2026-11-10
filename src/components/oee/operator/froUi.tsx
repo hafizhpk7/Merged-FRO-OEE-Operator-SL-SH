@@ -60,11 +60,12 @@ const TONES: Record<CardTone, string> = {
 };
 
 /** Card frame of the old UI: white section, 1 px near-white border, radius 6, 20 px padding, icon chip + title + divider. */
-export function FroCard({ icon, tone, title, testId, gap = "gap-4", children }: { icon: ReactNode; tone: CardTone; title: string; testId?: string; gap?: string; children: ReactNode }) {
+export function FroCard({ icon, tone, title, testId, children }: { icon: ReactNode; tone: CardTone; title: string; testId?: string; children: ReactNode }) {
   return (
     <section
+      data-fro-card=""
       {...(testId ? { "data-testid": testId } : {})}
-      className="flex h-full min-w-0 flex-col rounded-md border border-[color:var(--fro-card-border)] bg-card p-5 text-foreground"
+      className="flex min-w-0 flex-col rounded-md border border-[color:var(--fro-card-border)] bg-card p-5 text-foreground"
       style={{ boxShadow: "var(--fro-shadow)" }}
     >
       <div className="flex flex-col gap-2">
@@ -74,16 +75,16 @@ export function FroCard({ icon, tone, title, testId, gap = "gap-4", children }: 
         </div>
         <hr className="border-0 border-t border-border" />
       </div>
-      <div className={`flex flex-1 flex-col justify-between pt-4 ${gap}`}>{children}</div>
+      <div className="flex flex-1 flex-col gap-[var(--fro-section-gap)] pt-4">{children}</div>
     </section>
   );
 }
 
 /** Track + fill, 10 px high. */
-export function ProgressBar({ value, scale, color, testId }: { value: number; scale: number; color?: string; testId?: string }) {
+export function ProgressBar({ value, scale, color, testId, grow = false }: { value: number; scale: number; color?: string; testId?: string; grow?: boolean }) {
   const pct = scale > 0 ? Math.min(100, Math.max(0, (value / scale) * 100)) : 0;
   return (
-    <div className="h-2.5 w-full overflow-hidden rounded-full bg-[color:var(--fro-track)]" {...(testId ? { "data-testid": testId } : {})}>
+    <div className={`w-full overflow-hidden rounded-full bg-[color:var(--fro-track)] ${grow ? "min-h-2.5 max-h-[18px] flex-1" : "h-2.5"}`} {...(testId ? { "data-testid": testId } : {})}>
       <div className="h-full" style={{ width: `${pct}%`, background: color ?? "var(--primary)" }} />
     </div>
   );
@@ -108,13 +109,15 @@ export function CounterRow({ icon, name, cur, master }: { icon: ReactNode; name:
 /** Label / value row with a divider below (Output IDW, Output OEE, Gap, Total MPQ). */
 export function OutputRow({ name, value, testId, valueClass = "" }: { name: string; value: string; testId?: string; valueClass?: string }) {
   return (
-    <>
-      <div className="flex items-baseline justify-between gap-3 py-2.5">
-        <p className={`text-xs font-medium ${text2}`}>{name}</p>
-        <p className={`text-sm font-semibold ${valueClass}`} {...(testId ? { "data-testid": testId } : {})}>{value}</p>
+    <div className="flex min-h-[42px] max-h-[66px] flex-1 flex-col">
+      <div className="flex flex-1 items-center py-2.5">
+        <div className="flex w-full items-baseline justify-between gap-3">
+          <p className={`text-xs font-medium ${text2}`}>{name}</p>
+          <p className={`text-sm font-semibold ${valueClass}`} {...(testId ? { "data-testid": testId } : {})}>{value}</p>
+        </div>
       </div>
       <hr className="border-0 border-t border-border" />
-    </>
+    </div>
   );
 }
 
@@ -189,7 +192,7 @@ export function BigOutput({
   barColor?: string;
 }) {
   return (
-    <div className="flex flex-col gap-3" {...(testId ? { "data-testid": testId } : {})}>
+    <div className="flex max-h-[67px] flex-1 flex-col gap-[var(--fro-section-gap-tight)]" {...(testId ? { "data-testid": testId } : {})}>
       <div className="flex items-end justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <p className={label}>{title}</p>
@@ -202,7 +205,7 @@ export function BigOutput({
         </div>
         <p className={`text-right text-xs ${text2}`}>{note}</p>
       </div>
-      <ProgressBar value={value} scale={scale} {...(barTestId ? { testId: barTestId } : {})} {...(barColor ? { color: barColor } : {})} />
+      <ProgressBar grow value={value} scale={scale} {...(barTestId ? { testId: barTestId } : {})} {...(barColor ? { color: barColor } : {})} />
     </div>
   );
 }
@@ -216,7 +219,7 @@ export function QaCounters({ qaStats, icon, testId }: { qaStats: { sample: numbe
     </div>
   );
   return (
-    <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-1" data-testid={testId}>
+    <div className="flex max-h-[51px] min-h-[27px] flex-1 flex-wrap content-center items-center justify-end gap-x-5 gap-y-1" data-testid={testId}>
       {item("Sample", qaStats.sample, "", icon)}
       {item("Released", qaStats.released, "text-[color:var(--fro-qa-green)] [&]:text-[color:var(--fro-qa-green)]")}
       {item("Reject", qaStats.reject, "text-[color:var(--fro-qa-red)] [&]:text-[color:var(--fro-qa-red)]")}

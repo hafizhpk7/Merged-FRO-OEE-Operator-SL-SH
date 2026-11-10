@@ -248,6 +248,10 @@ function compare(ref, app, tag, vh) {
       deviations.push(`[${tag}] box ${k}: h app ${ab.h} vs ref ${rb.h} (cards stretch to fill the viewport)`);
       d = d.filter((p) => p !== "h");
     }
+    if (["idwCard", "poCard", "shiftCard"].includes(k) && d.includes("h") && ab.h < rb.h) {
+      deviations.push(`[${tag}] box ${k}: h app ${ab.h} vs ref ${rb.h} (3 columns: cards hug their content, no blank band inside a card)`);
+      d = d.filter((p) => p !== "h");
+    }
     if (!stretched && k === "oeeCard" && d.includes("h") && ab.h > rb.h) {
       deviations.push(`[${tag}] box oeeCard: h app ${ab.h} vs ref ${rb.h} (the OEE card grows into the free space of its card, no blank area)`);
       d = d.filter((p) => p !== "h");

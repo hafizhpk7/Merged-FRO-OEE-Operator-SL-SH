@@ -168,7 +168,9 @@
   .fro-grid > :nth-child(3) { grid-column: span 2; }
 }
 @media (min-width: 1280px) {
-  .fro-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* 3 columns: the natural card heights differ by more than 80 px, so the cards hug their content instead of
+     stretching (no blank band inside a card). 1-2 columns keep stretching; their growable regions absorb it. */
+  .fro-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
   .fro-grid > :nth-child(3) { grid-column: auto; }
 }
 
@@ -182,4 +184,12 @@
   --text-lg--line-height: 1.5;
   --text-xl--line-height: 1.5;
   line-height: 1.5;
+}
+
+/* One spacing system for the dashboard cards: free height is absorbed by a designated growable region
+   (capped), never distributed between sections. */
+.fro-theme {
+  --fro-section-gap: 16px; /* between sections of a card */
+  --fro-section-gap-tight: 12px; /* inside tight sub-groups */
+  --fro-row-gap: 8px; /* inside rows */
 }

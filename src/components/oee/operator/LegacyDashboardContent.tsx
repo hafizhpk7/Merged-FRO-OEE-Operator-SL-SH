@@ -101,7 +101,7 @@ export function LegacyDashboardContent({
               : `OEE is not active for this line yet (${lineId}). Only Inline Device Weigher monitoring is available.`}
           </p>
         </div>
-        <div className="grid w-full flex-1 grid-cols-1 items-stretch md:max-w-xl">
+        <div className="grid w-full grid-cols-1 items-start md:max-w-xl">
           <IdwBlock plantId={plantId} lineId={lineId} outputOee={outputOee} totalMpq={poInfo.mpq} />
         </div>
       </div>
@@ -145,7 +145,7 @@ export function LegacyDashboardContent({
         </div>
       </FroCard>
 
-      <FroCard testId="legacy-shift" tone="shift" icon={<BarChart3 />} title="Shift Performance" gap="gap-6">
+      <FroCard testId="legacy-shift" tone="shift" icon={<BarChart3 />} title="Shift Performance">
         <BigOutput
           title="Actual output"
           value={outputOee}

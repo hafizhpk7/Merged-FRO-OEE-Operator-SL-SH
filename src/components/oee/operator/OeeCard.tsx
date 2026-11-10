@@ -112,8 +112,8 @@ export function OeeCard({
           </div>
 
           {/* Donut */}
-          <div className="flex flex-1 items-center justify-center py-2">
-            <div className="relative flex size-[180px] items-center justify-center" data-testid="oee-donut">
+          <div className="flex min-h-[196px] flex-1 items-center justify-center py-2 [container-type:size]">
+            <div className="relative flex aspect-square w-[clamp(180px,calc(100cqh-16px),220px)] items-center justify-center" data-testid="oee-donut">
               <svg viewBox="0 0 120 120" className="absolute inset-0 size-full -rotate-90" aria-hidden>
                 <circle cx="60" cy="60" r="52" fill="none" strokeWidth="9" stroke="var(--fro-track)" />
                 <circle

@@ -39,7 +39,7 @@ export function TargetBlock({
   const pctOf = (v: number) => (scale > 0 ? ((v / scale) * 100).toFixed(1) : "0.0");
 
   return (
-    <div className="flex flex-col gap-4" data-testid={testId} data-frozen={frozen ? "true" : "false"}>
+    <div className="flex flex-1 flex-col gap-[var(--fro-section-gap)]" data-testid={testId} data-frozen={frozen ? "true" : "false"}>
       {/* TOTAL TARGET OUTPUT */}
       {noStandard ? (
         <div className="flex flex-col gap-0.5">
@@ -49,7 +49,7 @@ export function TargetBlock({
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-1 flex-col gap-1">
           <BigOutput
             title="Total Target Output"
             value={target}
@@ -77,7 +77,7 @@ export function TargetBlock({
       />
 
       {/* Scorecards */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="flex max-h-[104px] flex-1 gap-[var(--fro-row-gap)] [&>*]:flex-1">
         <div
           data-testid={`${testId}-gap-output`}
           data-sign={noStandard ? "none" : good ? "pos" : "neg"}
