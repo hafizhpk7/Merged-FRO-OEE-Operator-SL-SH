@@ -1,4 +1,11 @@
-import { formatDateWib, getShiftInfo, getShiftInfoAt, SHIFT_SECONDS, formatTimeWib } from "./shiftClock";
+import { WIB_OFFSET_MS, getShiftInfo, getShiftInfoAt, SHIFT_SECONDS, formatDateWib, formatTimeWib } from "./shiftClock";
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** `10 Nov 2026` (WIB) */
+function dMonYyyy(sec: number): string {
+  const d = new Date(sec * 1000 + WIB_OFFSET_MS);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
 
 export type ShiftItem = {
   /** `shift-<startSec>` */
@@ -30,7 +37,7 @@ export function getMockShifts(count = 3): ShiftItem[] {
       name: `Shift ${info.code}`,
       startTime: start,
       endTime: end,
-      label: `Shift ${info.code} (${start} – ${end})`,
+      label: `Shift ${info.code} (${start} – ${end}) · ${dMonYyyy(info.startSec)}`,
       isCurrent: i === 0,
       dateStr: formatDateWib(info.startSec),
       startSec: info.startSec,

@@ -20,15 +20,19 @@ export function OeeCard({
   plantId,
   lineId,
   rejectCount: _rejectCount,
+  ownToggle = false,
 }: {
   plantId: string;
   lineId: string;
   rejectCount: number;
+  /** Legacy view: the card keeps its own SKU / Line toggle instead of following the SRR switch. */
+  ownToggle?: boolean;
 }) {
   const srrMode = useSrrMode();
   // CR 5: the card has no toggle of its own; SRR SKU = SKU standard, SRR Line = machine/line rated speed
   const [localSkuOn, setLocalSkuOn] = useState(true);
-  const skuOn = OEE_CARD_FOLLOWS_SRR_SWITCH ? srrMode === "SKU" : localSkuOn;
+  const followSwitch = OEE_CARD_FOLLOWS_SRR_SWITCH && !ownToggle;
+  const skuOn = followSwitch ? srrMode === "SKU" : localSkuOn;
   const setSkuOn = setLocalSkuOn;
   const [expandOpen, setExpandOpen] = useState(false);
 
@@ -60,7 +64,7 @@ export function OeeCard({
               </h4>
             </div>
             <div className="flex items-center gap-2">
-              {OEE_CARD_FOLLOWS_SRR_SWITCH ? (
+              {followSwitch ? (
                 <span
                   data-testid="oee-card-srr"
                   className="rounded bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground"
@@ -68,6 +72,22 @@ export function OeeCard({
                   {srrMode === "SKU" ? "SRR SKU" : "SRR Line"}
                 </span>
               ) : (
+                ownToggle ? (
+                  <div className="inline-flex rounded-md border border-border p-0.5" role="group" aria-label="SKU / Line" data-testid="legacy-oee-toggle">
+                    {([[true, "SKU"], [false, "Line"]] as const).map(([v, label]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        aria-pressed={skuOn === v}
+                        data-testid={`legacy-oee-${label.toLowerCase()}`}
+                        onClick={() => setSkuOn(v)}
+                        className={`rounded px-2.5 py-1 text-[11px] font-bold transition-colors ${skuOn === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
                 <button
                   onClick={() => setSkuOn(!skuOn)}
                   className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-[11px] font-bold text-white transition-colors ${
@@ -76,6 +96,7 @@ export function OeeCard({
                 >
                   {skuOn ? "SKU-ON" : "SKU-OFF"}
                 </button>
+                )
               )}
               <Button
                 variant="ghost"

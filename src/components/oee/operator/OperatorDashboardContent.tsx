@@ -13,6 +13,8 @@ import { getQaIntervalForMpq } from "@/lib/oee/qaConfig";
 import { useRejectStore, rejectStore } from "@/lib/oee/rejectStore";
 import { AlertCircle } from "lucide-react";
 import { useTargetSnapshot } from "./useTargetSnapshot";
+import { LegacyDashboardContent } from "./LegacyDashboardContent";
+import { useDashboardVersion } from "@/lib/oee/dashboardVersionStore";
 
 export function OperatorDashboardContent({
   plantId,
@@ -23,6 +25,7 @@ export function OperatorDashboardContent({
   lineId: string;
   shiftKey: string;
 }) {
+  const legacyView = useDashboardVersion() === "old";
   const viewingPast = useViewShift().isPast; // a completed shift shows frozen values: no QA alert
   const opMode = useLineOperationalMode(plantId, lineId);
   const isActiveLine = opMode.mode === "full";
@@ -112,6 +115,17 @@ export function OperatorDashboardContent({
 
     return () => clearInterval(checkTimer);
   }, [shiftKey]);
+
+  if (legacyView) {
+    return (
+      <>
+        <LegacyDashboardContent plantId={plantId} lineId={lineId} outputOee={outputOee} totalReject={totalReject} qaStats={qaStats} />
+        {isActiveLine && (
+          <QaInspectionModal open={qaModalOpen} sampleNo={qaStats.sample + 1} onSubmitInspection={handleQaSubmit} />
+        )}
+      </>
+    );
+  }
 
   if (!isActiveLine) {
     return (

@@ -1,23 +1,18 @@
-import { Clock, Cpu } from "lucide-react";
-import { getMockShifts, type ShiftItem } from "@/lib/oee/shiftMaster";
-import { useSimWindowBucket } from "@/lib/oee/useSimTick";
-import { useViewShift, viewShiftStore } from "@/lib/oee/viewShiftStore";
+import { Cpu } from "lucide-react";
 import { getLine } from "@/lib/oee/data";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+/**
+ * Page-level controls under the header card: optional extra controls (Dashboard: SRR switch and
+ * Realisasi per jam) and the machine select (Reject and Reason). The LIST SHIFT select lives in the
+ * header card (ShiftSelect).
+ */
 export function OperatorSelectors({
   plantId,
   lineId,
   showMachineSelect = false,
   selectedMachine,
   onMachineChange,
-  onBeforeShiftChange,
   includeAllMachines = false,
   extra,
 }: {
@@ -26,21 +21,9 @@ export function OperatorSelectors({
   showMachineSelect?: boolean;
   selectedMachine?: string;
   onMachineChange?: (machineId: string) => void;
-  onBeforeShiftChange?: (proceed: () => void) => void;
   includeAllMachines?: boolean;
-  /** Extra controls shown before LIST SHIFT (Dashboard: SRR switch and Realisasi per jam). */
   extra?: React.ReactNode;
 }) {
-  useSimWindowBucket(480); // the list follows simulated time (shift rollover)
-  const shifts = getMockShifts();
-  // LIST SHIFT drives every operator page through the shared view-shift store.
-  const view = useViewShift();
-  const selectedShift = `shift-${view.info.startSec}`;
-  const setSelectedShift = (id: string) => {
-    const s = shifts.find((x) => x.id === id);
-    viewShiftStore.set(!s || s.isCurrent ? null : s.startSec);
-  };
-
   const line =
     getLine(plantId, "A", lineId) || getLine(plantId, "B", lineId) || getLine(plantId, "C", lineId);
   const rawMachines = line?.machines || [
@@ -48,62 +31,22 @@ export function OperatorSelectors({
     { id: "LCM07", name: "LCM07 - CARTONING MACHINE" },
     { id: "LCP03", name: "LCP03 - CASE PACKER" },
   ];
-
   const machines = includeAllMachines
     ? [{ id: "ALL", name: "All machines (Line)" }, ...rawMachines]
     : rawMachines;
 
+  if (!extra && !showMachineSelect) return null;
   return (
-    <div className="flex flex-wrap items-center justify-end gap-3 py-2">
+    <div className="flex flex-wrap items-center justify-end gap-3 py-1">
       {extra}
-      {/* Shift Selector */}
-      <div className="flex items-center gap-2">
-        <label className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          <Clock className="size-3.5" />
-          LIST SHIFT
-        </label>
-        <Select
-          value={selectedShift}
-          onValueChange={(val) => {
-            if (onBeforeShiftChange) {
-              onBeforeShiftChange(() => setSelectedShift(val));
-            } else {
-              setSelectedShift(val);
-            }
-          }}
-        >
-          <SelectTrigger data-testid="list-shift" className="h-8 w-64 bg-card text-xs font-medium border-border">
-            <SelectValue placeholder="Select shift" />
-          </SelectTrigger>
-          <SelectContent align="end">
-            {shifts.map((s: ShiftItem) => (
-              <SelectItem key={s.id} value={s.id} className="text-xs">
-                <div className="flex items-center gap-2">
-                  {s.isCurrent && (
-                    <span className="rounded bg-orange-500 px-1.5 py-0.2 text-[10px] font-bold text-white uppercase">
-                      Current
-                    </span>
-                  )}
-                  <span>{s.label}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Machine Selector (Optional - rendered on Reject and Reason tabs) */}
       {showMachineSelect && (
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             <Cpu className="size-3.5" />
             LIST MACHINE
           </label>
-          <Select
-            value={selectedMachine || machines[0]?.id || "ALL"}
-            onValueChange={(val) => onMachineChange?.(val)}
-          >
-            <SelectTrigger className="h-8 w-60 bg-card text-xs font-medium border-border">
+          <Select value={selectedMachine || machines[0]?.id || "ALL"} onValueChange={(val) => onMachineChange?.(val)}>
+            <SelectTrigger data-testid="list-machine" className="h-8 w-60 max-w-full bg-card text-xs font-medium border-border">
               <SelectValue placeholder="Select machine" />
             </SelectTrigger>
             <SelectContent align="end">

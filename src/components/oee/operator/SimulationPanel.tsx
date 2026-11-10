@@ -28,6 +28,7 @@ import { REJECT_TYPES } from "@/lib/oee/rejectConfig";
 import { formatGapMin } from "@/lib/oee/targetEngine";
 import { useSimWindowBucket } from "@/lib/oee/useSimTick";
 import { useTargetSnapshot } from "./useTargetSnapshot";
+import { dashboardVersionStore, useDashboardVersion } from "@/lib/oee/dashboardVersionStore";
 
 const OPEN_KEY = "fro_sim_panel_open";
 const TIME_FMT = (ms: number) => {
@@ -158,6 +159,7 @@ function PanelBody({ plantId, lineId }: { plantId: string; lineId: string }) {
   const [qty, setQty] = useState(10);
 
   const plc = s.plcDowntimeRatio ?? 0.875;
+  const dashVersion = useDashboardVersion();
   const fileRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -387,6 +389,23 @@ function PanelBody({ plantId, lineId }: { plantId: string; lineId: string }) {
               <option value="continued">PO lanjutan shift sebelumnya</option>
             </select>
           </label>
+        </div>
+        <div className="space-y-1" data-testid="sim-dashboard-version">
+          <span className="block text-[11px] text-muted-foreground">Main dashboard version</span>
+          <div className="inline-flex rounded-md border border-border p-0.5" role="group" aria-label="Main dashboard version">
+            {([["old", "Old FRO"], ["new", "New CR design"]] as const).map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                data-testid={`sim-version-${v}`}
+                aria-pressed={dashVersion === v}
+                onClick={() => dashboardVersionStore.set(v)}
+                className={`rounded px-2.5 py-1 text-[11px] font-semibold transition-colors ${dashVersion === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex flex-wrap gap-1.5">
           <Button size="sm" variant="outline" className={btn} data-testid="sim-qa" onClick={triggerQaAlert}>Trigger QA alert</Button>

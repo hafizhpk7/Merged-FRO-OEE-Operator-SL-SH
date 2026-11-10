@@ -139,6 +139,7 @@ function OperatorReasonInner() {
       plantId={plantId}
       lineId={lineId}
       onBeforeFinishWorkOrder={(proceed) => handleTriggerShiftFinish(proceed)}
+      onBeforeShiftChange={(proceed) => handleTriggerShiftFinish(proceed)}
     >
       <div className="page-fill">
         {/* Selectors Row */}
@@ -148,7 +149,6 @@ function OperatorReasonInner() {
           showMachineSelect={true}
           selectedMachine={selectedMachine}
           onMachineChange={setSelectedMachine}
-          onBeforeShiftChange={(proceed) => handleTriggerShiftFinish(proceed)}
         />
 
         {/* Read-Only OEE Strip */}

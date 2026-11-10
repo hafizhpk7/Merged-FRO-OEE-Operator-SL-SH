@@ -263,3 +263,6 @@ export const EVENT_DENSITY: {
   other: "normal",
   pilotLines: ["TUP01", "TUP13", "TUP14", "BOP15", "BOP16"],
 };
+
+/** Main Dashboard version shown on the operator Dashboard tab: "new" = CR design, "old" = legacy FRO view. */
+export const DASHBOARD_VERSION_DEFAULT: "old" | "new" = "new";

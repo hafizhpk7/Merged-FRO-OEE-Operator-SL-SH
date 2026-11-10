@@ -5,6 +5,7 @@
  * corrections, QA counters and summarization, so it goes through a confirmation (SimDensityConfirm).
  */
 import { useSyncExternalStore } from "react";
+import { dashboardVersionStore } from "./dashboardVersionStore";
 import { reasonTagStore } from "./reasonTagStore";
 import { rejectStore } from "./rejectStore";
 import { summarizationStore } from "./summarizationStore";
@@ -197,6 +198,8 @@ export type SimExport = {
   state: SimState;
   shiftStartOverrideMin: number | null;
   viewShiftStart: number | null;
+  /** Main dashboard version ("old" legacy FRO view / "new" CR design); absent in older files. */
+  dashboardVersion?: "old" | "new";
 };
 
 export function exportSimState(): SimExport {
@@ -208,6 +211,7 @@ export function exportSimState(): SimExport {
     state: JSON.parse(JSON.stringify(s)) as SimState,
     shiftStartOverrideMin: isShiftOverrideActive() ? getShiftStartMinuteOfDay() : null,
     viewShiftStart: viewShiftStore.get(),
+    dashboardVersion: dashboardVersionStore.get(),
   };
 }
 
@@ -222,6 +226,7 @@ export function importSimState(raw: unknown): string | null {
   setShiftStartOverrideMin(x.shiftStartOverrideMin ?? null);
   simStore.replace({ ...st, anchorSimMs: x.simNowMs });
   viewShiftStore.set(x.viewShiftStart ?? null);
+  if (x.dashboardVersion === "old" || x.dashboardVersion === "new") dashboardVersionStore.set(x.dashboardVersion);
   clearCurrentShiftCache();
   clearMetricsCache();
   return null;
@@ -250,6 +255,7 @@ export const sim = {
   triggerQaAlert,
   applyPoScenario,
   jumps,
+  setDashboardVersion: (v: "old" | "new") => dashboardVersionStore.set(v),
   exportState: exportSimState,
   importState: importSimState,
   resetOverrides,

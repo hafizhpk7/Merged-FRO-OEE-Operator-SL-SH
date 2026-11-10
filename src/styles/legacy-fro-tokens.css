@@ -1,0 +1,130 @@
+/*
+ * Legacy FRO MES design tokens (docs/legacy/design-tokens.md), generated from the saved page
+ * "Flowreport MES.html" (Chakra UI v3, zinc palette) with scripts/legacy-tokens.mjs.
+ *
+ * Scoped to `.fro-theme` (the operator pages). It overrides the shadcn CSS variables only, so the
+ * SL/SH pages keep the prototype theme. Colours are oklch (project convention); the hex reference is
+ * in the comments. Dark values follow the Chakra `.dark` semantic tokens of the saved CSS
+ * (bg black, panel gray-950, fg gray-50, border gray-800, primary blue-300).
+ */
+.fro-theme {
+  --radius: 0.5rem; /* Chakra radii: md 0.375rem, lg 0.5rem */
+  --background: oklch(1 0 0); /* #ffffff */
+  --foreground: oklch(0.141 0.004 285.8); /* #09090b */
+  --card: oklch(1 0 0); /* #ffffff */
+  --card-foreground: oklch(0.141 0.004 285.8); /* #09090b */
+  --popover: oklch(1 0 0); /* #ffffff */
+  --popover-foreground: oklch(0.141 0.004 285.8); /* #09090b */
+  --primary: oklch(0.408 0.174 264.4); /* #173da6 blue-700 (primary) */
+  --primary-foreground: oklch(1 0 0); /* #ffffff */
+  --secondary: oklch(0.967 0.001 286.4); /* gray-100 */
+  --secondary-foreground: oklch(0.21 0.006 285.9); /* #18181b */
+  --muted: oklch(0.967 0.001 286.4); /* gray-100 */
+  --muted-foreground: oklch(0.552 0.014 285.9); /* gray-500 */
+  --accent: oklch(0.967 0.001 286.4); /* gray-100 */
+  --accent-foreground: oklch(0.21 0.006 285.9); /* #18181b */
+  --destructive: oklch(0.577 0.215 27.3); /* red-600 */
+  --destructive-foreground: oklch(1 0 0); /* #ffffff */
+  --border: oklch(0.92 0.004 286.3); /* gray-200 */
+  --input: oklch(0.92 0.004 286.3); /* gray-200 */
+  --ring: oklch(0.546 0.215 262.9); /* blue-600 */
+  --chart-1: oklch(0.408 0.174 264.4); /* #173da6 */
+  --chart-2: oklch(0.627 0.17 149.2); /* green-600 */
+  --chart-3: oklch(0.646 0.194 41.1); /* orange-600 */
+  --chart-4: oklch(0.795 0.162 86); /* yellow-500 */
+  --chart-5: oklch(0.577 0.215 27.3); /* red-600 */
+  --surface: oklch(1 0 0); /* #ffffff */
+  --grid: oklch(0.967 0.001 286.4); /* #f4f4f5 */
+  --sidebar: oklch(1 0 0); /* #ffffff */
+  --sidebar-foreground: oklch(0.552 0.014 285.9); /* rgba(0,0,0,.48) on white */
+  --sidebar-primary: oklch(0.408 0.174 264.4); /* #173da6 */
+  --sidebar-primary-foreground: oklch(1 0 0); /* #ffffff */
+  --sidebar-accent: oklch(0.932 0.032 255.6); /* blue-100 (active item) */
+  --sidebar-accent-foreground: oklch(0.408 0.174 264.4); /* #173da6 */
+  --sidebar-border: oklch(0.92 0.004 286.3); /* #e4e4e7 */
+  --sidebar-ring: oklch(0.546 0.215 262.9); /* #2563eb */
+  --tier-good: oklch(0.627 0.17 149.2); /* #16a34a */
+  --tier-warn: oklch(0.646 0.194 41.1); /* #ea580c */
+  --tier-bad: oklch(0.577 0.215 27.3); /* #dc2626 */
+  /* typography: Inter first, then the system stack of the old UI */
+  --fro-font: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  /* Chakra card shadow: 0 2px 4px rgba(24,24,27,.1), 0 0 1px rgba(24,24,27,.3) */
+  --fro-shadow: 0 2px 4px 0 rgb(24 24 27 / 0.1), 0 0 1px 0 rgb(24 24 27 / 0.3);
+  /* run rate bar segments (red / green / yellow) and marker */
+  --fro-rr-low: rgb(228 91 74);
+  --fro-rr-ok: rgb(139 175 60);
+  --fro-rr-high: rgb(240 180 41);
+  /* status colours */
+  --fro-ok: #16a34a; /* green-600 */
+  --fro-warn: #ea580c; /* orange-600 */
+  --fro-danger: #dc2626; /* red-600 */
+  --fro-info: #2563eb; /* blue-600 */
+  --fro-chip-blue-bg: #dbeafe;
+  --fro-chip-blue-fg: #173da6;
+  --fro-chip-green-bg: #dcfce7;
+  --fro-chip-green-fg: #116932;
+  --fro-sisa-bg: #ffedd5;
+  --fro-sisa-fg: #92310a;
+  --fro-pause-fg: #713f12;
+  --fro-pause-border: #fef08a;
+  --fro-oee-card-bg: #eff6ff; /* blue-50 */
+  --fro-danger-btn: rgb(228 91 74);
+  font-family: var(--fro-font);
+}
+
+.dark .fro-theme,
+.fro-theme.dark {
+  --background: oklch(0 0 0); /* bg: black */
+  --foreground: oklch(0.985 0 0); /* gray-50 */
+  --card: oklch(0.141 0.004 285.8); /* gray-950 (bg-panel) */
+  --card-foreground: oklch(0.985 0 0); /* #fafafa */
+  --popover: oklch(0.141 0.004 285.8); /* #09090b */
+  --popover-foreground: oklch(0.985 0 0); /* #fafafa */
+  --primary: oklch(0.809 0.096 251.8); /* blue-300 (primary-solid in dark) */
+  --primary-foreground: oklch(0 0 0); /* #000000 */
+  --secondary: oklch(0.21 0.006 285.9); /* gray-900 */
+  --secondary-foreground: oklch(0.985 0 0); /* #fafafa */
+  --muted: oklch(0.21 0.006 285.9); /* gray-900 */
+  --muted-foreground: oklch(0.712 0.013 286.1); /* gray-400 */
+  --accent: oklch(0.274 0.005 286); /* gray-800 */
+  --accent-foreground: oklch(0.985 0 0); /* #fafafa */
+  --destructive: oklch(0.577 0.215 27.3); /* red-600 */
+  --destructive-foreground: oklch(1 0 0); /* #ffffff */
+  --border: oklch(0.274 0.005 286); /* gray-800 */
+  --input: oklch(0.274 0.005 286); /* gray-800 */
+  --ring: oklch(0.623 0.188 259.8); /* blue-500 */
+  --chart-1: oklch(0.809 0.096 251.8); /* #93c5fd */
+  --chart-2: oklch(0.8 0.182 151.7); /* green-400 */
+  --chart-3: oklch(0.758 0.159 55.9); /* orange-400 */
+  --chart-4: oklch(0.861 0.173 91.9); /* yellow-400 */
+  --chart-5: oklch(0.711 0.166 22.2); /* red-400 */
+  --surface: oklch(0.141 0.004 285.8); /* #09090b */
+  --grid: oklch(0.21 0.006 285.9); /* #18181b */
+  --sidebar: oklch(0.141 0.004 285.8); /* #09090b */
+  --sidebar-foreground: oklch(0.712 0.013 286.1); /* #a1a1aa */
+  --sidebar-primary: oklch(0.809 0.096 251.8); /* #93c5fd */
+  --sidebar-primary-foreground: oklch(0 0 0); /* #000000 */
+  --sidebar-accent: oklch(0.282 0.087 267.9); /* blue-950 (active item) */
+  --sidebar-accent-foreground: oklch(0.809 0.096 251.8); /* #93c5fd */
+  --sidebar-border: oklch(0.274 0.005 286); /* #27272a */
+  --sidebar-ring: oklch(0.623 0.188 259.8); /* #3b82f6 */
+  --tier-good: oklch(0.8 0.182 151.7); /* #4ade80 */
+  --tier-warn: oklch(0.758 0.159 55.9); /* #fb923c */
+  --tier-bad: oklch(0.711 0.166 22.2); /* #f87171 */
+  --fro-shadow: 0 2px 4px 0 rgb(0 0 0 / 0.5), 0 0 1px 0 rgb(255 255 255 / 0.2);
+  --fro-chip-blue-bg: #172554;
+  --fro-chip-blue-fg: #93c5fd;
+  --fro-chip-green-bg: #052e16;
+  --fro-chip-green-fg: #86efac;
+  --fro-sisa-bg: #431407;
+  --fro-sisa-fg: #fdba74;
+  --fro-pause-fg: #fde047;
+  --fro-pause-border: #713f12;
+  --fro-oee-card-bg: #0b1a3a;
+}
+
+/* the old UI cards: white panel, hairline border, soft double shadow */
+.fro-theme .shadow-xs,
+.fro-theme .shadow-sm {
+  box-shadow: var(--fro-shadow);
+}

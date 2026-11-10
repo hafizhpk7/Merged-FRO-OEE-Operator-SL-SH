@@ -8,7 +8,7 @@ export function LinePicker() {
   const operationalPlants = PLANTS.filter((p) => p.isOperational);
 
   return (
-    <div className="flex min-h-screen w-full flex-1 flex-col gap-6 p-4 sm:p-6">
+    <div className="flex w-full flex-1 flex-col gap-6">
       <div className="space-y-1 text-center md:text-left">
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Operator Line Selection

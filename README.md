@@ -60,6 +60,7 @@ Panel dapat di-minimize (default tertutup, tersimpan per tab). Badge **SIMULATIO
 - **Event dan reject**: sisipkan Downtime / Minor Stop / Speed Loss untuk mesin terpilih pada waktu simulasi, reject burst per slot, slider rasio alarm Downtime terhubung PLC, trigger QA alert.
 - **Skenario**: Single SKU, 3 SKU + changeover (mockup CR 5), PO lanjutan dari shift sebelumnya.
 - **Event density** (Normal / High / Extreme; default High untuk line pilot): loss yang sama dipecah menjadi event pendek bergantian (1-3 menit, atau 30-60 detik); total menit loss dan OEE tidak berubah. Mengubahnya mereset tag, koreksi, counter QA dan summarization setelah konfirmasi.
+- **Main dashboard version**: Old FRO (tampilan lama: Inline Device Weigher, Process Order Performance, Shift Performance dengan run rate SKU/line/shift) atau New CR design. Disimpan per tab (sessionStorage `fro_dashboard_version`), ikut export/import, tidak ikut reset override. Default diatur `DASHBOARD_VERSION_DEFAULT` di `src/lib/oee/config.ts`. Run rate lama dihitung di `src/lib/oee/legacyRunRate.ts` (`runLegacyRunRateSelfTest()`).
 - **Data**: reset override, reset data demo, export/import seluruh state simulasi (JSON).
 
 Helper konsol: `window.sim`, `window.setSrrLine(plant, line, nilaiAtauNull)`, `window.setViewShift(indeks)`.

@@ -1,4 +1,4 @@
-export const BUILD_ID = "r51 · 09 Nov 2026 WIB · SIM-output";
+export const BUILD_ID = "r52 · 10 Nov 2026 WIB · LEGACY-dashboard";
 
 export const FEATURES = {
   routeTreeManualSync: true,
@@ -138,6 +138,11 @@ export const FEATURES = {
   simActualVsTargetRetro: true,
   simActualVsTargetMarginal: true,
   simOutputSelfTest: true,
+  froTheme: true,
+  operatorShellRestyle: true,
+  dashboardVersionToggle: true,
+  legacyDashboardView: true,
+  legacyRunRateSelfTest: true,
 };
 
 if (typeof window !== "undefined") {
