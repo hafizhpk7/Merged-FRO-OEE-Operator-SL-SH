@@ -90,38 +90,39 @@ export function OperatorSidebar({ plantId = DEFAULT_PLANT_ID, lineId }: { plantI
         style={{ width: collapsed ? SIDEBAR_RAIL_PX : SIDEBAR_WIDE_PX }}
         className="fixed inset-y-0 left-0 z-40 flex flex-col justify-between overflow-y-auto overflow-x-hidden border-r border-sidebar-border bg-sidebar transition-[width] duration-200"
       >
-        <div className="flex flex-col gap-4 py-3">
-          {/* logo and collapse toggle */}
-          <div className={`flex items-center ${collapsed ? "flex-col gap-3" : "justify-between px-4"}`}>
-            <Link to="/operator" aria-label="FlowReport, pilih line">
-              <FroLogo collapsed={collapsed} />
-            </Link>
+        <div className="flex flex-col">
+          {/* top cell: collapse toggle (and the logo when expanded) */}
+          <div className={`flex h-14 shrink-0 items-center border-b border-sidebar-border ${collapsed ? "justify-center" : "justify-between px-4"}`}>
+            {!collapsed && (
+              <Link to="/operator" aria-label="FlowReport, pilih line">
+                <FroLogo collapsed={false} />
+              </Link>
+            )}
             <button
               type="button"
               data-testid="sidebar-toggle"
               aria-label={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"}
               onClick={() => operatorSidebarStore.toggle()}
-              className="flex size-9 items-center justify-center rounded-md text-sidebar-foreground hover:bg-accent hover:text-foreground"
+              className="flex size-10 items-center justify-center rounded text-[color:var(--fro-text-2)] outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
               <PanelLeft className="size-5" />
             </button>
           </div>
 
           {/* MES menu (non-functional except Pengemasan) */}
-          <nav aria-label="Menu MES" className={`flex flex-col gap-1 ${collapsed ? "items-center" : "px-3"}`}>
+          <nav aria-label="Menu MES" className={`flex flex-col gap-2 p-3 ${collapsed ? "items-center" : ""}`}>
             {MENU.map((g, gi) => (
-              <div key={gi} className={`flex flex-col gap-1 ${collapsed ? "items-center" : ""}`}>
-                {g.title && !collapsed && (
-                  <p className="px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-sidebar-foreground/70">{g.title}</p>
+              <div key={gi} className={`flex flex-col gap-2 ${gi > 0 ? "mt-2" : ""} ${collapsed ? "items-center" : ""}`}>
+                {g.title && (
+                  <p className={collapsed ? "sr-only" : "px-3 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-sidebar-foreground/70"}>{g.title}</p>
                 )}
-                {g.title && collapsed && <span className="my-1 h-px w-6 bg-sidebar-border" />}
-                {g.items.map((it) => {
+                                {g.items.map((it) => {
                   const Icon = it.icon;
                   const body = (
                     <>
                       {it.active && <span className="absolute -left-0 top-1 bottom-1 w-1 rounded-r bg-sidebar-primary" />}
                       <Icon className="size-5 shrink-0" />
-                      {!collapsed && <span className="truncate font-semibold">{it.label}</span>}
+                      <span className={collapsed ? "sr-only" : "truncate text-sm font-semibold"}>{it.label}</span>
                     </>
                   );
                   const el = it.active ? (
@@ -155,19 +156,8 @@ export function OperatorSidebar({ plantId = DEFAULT_PLANT_ID, lineId }: { plantI
         </div>
 
         {/* Prototype group: role switcher and light/dark toggle stay reachable */}
-        <div className={`flex flex-col gap-1 border-t border-sidebar-border py-3 ${collapsed ? "items-center" : "px-3"}`} data-testid="sidebar-prototype">
+        <div className={`flex flex-col gap-2 border-t border-sidebar-border p-3 ${collapsed ? "items-center" : ""}`} data-testid="sidebar-prototype">
           {!collapsed && <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-sidebar-foreground/70">Prototype</p>}
-          <button
-            type="button"
-            data-testid="theme-toggle"
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            aria-label={isDarkMode ? "Light mode" : "Dark mode"}
-            className={itemClass(false)}
-          >
-            {isDarkMode ? <Sun className="size-5 shrink-0" /> : <Moon className="size-5 shrink-0" />}
-            {!collapsed && <span className="font-semibold">{isDarkMode ? "Light Mode" : "Dark Mode"}</span>}
-          </button>
-
           <Popover>
             <PopoverTrigger asChild>
               <button type="button" data-testid="role-switcher" aria-label="User & Role" className={itemClass(false)}>

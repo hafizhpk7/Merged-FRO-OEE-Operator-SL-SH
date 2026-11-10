@@ -74,3 +74,22 @@ bar); Overall Equipment Effectiveness card with the SKU / Line switch, expand ic
 
 **Footer.** Hidden in the DOM: two popovers "Nama QC" (input, placeholder `Masukkan nama QC...`, button `Jalankan`, disabled until
 filled) belonging to the AMR buttons **FG Release A** and **FG Release B**.
+
+## Step 2: design language applied to the NEW view
+
+The shared primitives live in `src/components/oee/operator/froUi.tsx` (card frame, icon chip, 10 px labels, progress
+bars, run-rate bar, buttons, select, Mulai/Sisa row, QA counters). The old view, the new view, the Inline Device
+Weigher and the OEE card all use them; the new Target / Actual / GAP blocks take the place of the old run-rate sections.
+
+`node scripts/legacy-compare.mjs` renders the saved page (JS disabled) and the app (old version, operator, J2/TUP01,
+simulated clock 10 Nov 2026 09:23:18 WIB, Actual vs Target 90 %) at 1440x900 and 1920x1080 and compares label order, block
+boxes (16 px), colors (4 per channel), fonts, sizes, weights and radii. Report: `reports/legacy/compare-report.json`.
+
+Intentional deviations (not compared or excluded):
+- Simulation panel (hidden during the comparison) and the role switcher at the bottom of the sidebar (prototype only).
+- "Legacy view" chip in the header card, and the prototype sidebar footer group.
+- Cards stretch to fill the viewport on tall screens (no blank area); the saved page leaves blank space below.
+- The Operator select in Process Order Performance (kept for functionality; absent on the saved page).
+- The AMR "Request Material" explanation is a tooltip instead of a red paragraph (not on the saved page).
+- Numbers are simulated; the saved page shows test values (OEE 344 %).
+- At 1920 the saved page was captured while its cards were still fading in, so only its header is compared reliably.

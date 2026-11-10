@@ -129,7 +129,7 @@ export function OperatorDashboardContent({
 
   if (!isActiveLine) {
     return (
-      <div className="flex w-full flex-1 flex-col gap-4 py-2">
+      <div className="flex w-full flex-1 flex-col gap-2">
         {/* Banner */}
         <div className="flex items-center gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4 text-amber-700 dark:text-amber-300 shadow-xs">
           <AlertCircle className="size-5 shrink-0" />
@@ -149,7 +149,7 @@ export function OperatorDashboardContent({
   }
 
   return (
-    <div className="grid w-full flex-1 grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1.4fr)] [&>*:nth-child(3)]:md:col-span-2 [&>*:nth-child(3)]:xl:col-span-1">
+    <div data-testid="new-dashboard" className="fro-grid">
       <IdwBlock plantId={plantId} lineId={lineId} outputOee={outputOee} totalMpq={poInfo.mpq} />
       <ProcessOrderCard
         plantId={plantId}

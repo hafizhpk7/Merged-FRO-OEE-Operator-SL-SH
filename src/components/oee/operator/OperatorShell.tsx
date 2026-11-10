@@ -26,7 +26,7 @@ export function OperatorShell({
         {...(onBeforeFinishWorkOrder ? { onBeforeFinishWorkOrder } : {})}
         {...(onBeforeShiftChange ? { onBeforeShiftChange } : {})}
       />
-      <main className="flex min-w-0 flex-1 flex-col">{children}</main>
+      <div className="flex min-w-0 flex-1 flex-col">{children}</div>
       <SrrBlockedModal />
     </OperatorFrame>
   );

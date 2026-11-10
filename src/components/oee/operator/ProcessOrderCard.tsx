@@ -1,15 +1,18 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { type ProcessOrderInfo } from "@/lib/oee/poMaster";
-import { FileText, Clock, ShieldCheck } from "lucide-react";
+import { FileText, Clock, ShieldCheck, Box } from "lucide-react";
 import { TargetBlock } from "./TargetBlock";
 import { useTargetSnapshot } from "./useTargetSnapshot";
+import { FroCard, MulaiRow, PoHeaderBox, QaCounters } from "./froUi";
 
+/**
+ * New (CR 5) Process Order Performance: same card frame, typography and sections as the old view;
+ * the old run-rate sections are replaced by the Target / Actual / GAP block.
+ */
 export function ProcessOrderCard({
   plantId,
   lineId,
   poInfo,
-  outputOee,
   totalReject,
   qaStats,
 }: {
@@ -66,113 +69,39 @@ export function ProcessOrderCard({
   });
 
   return (
-    <Card className="h-full min-w-0 border border-border bg-card shadow-xs">
-      <CardHeader className="border-b border-border bg-muted/20 pb-3">
-        <div className="flex items-center gap-2.5 pb-2">
-          <span className="flex size-8 items-center justify-center rounded bg-primary/10 text-primary">
-            <FileText className="size-4" />
-          </span>
-          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Process Order Performance
-          </span>
-        </div>
+    <FroCard testId="po-card" tone="po" icon={<FileText />} title="Process Order Performance">
+      <PoHeaderBox
+        sku={display.skuName}
+        po={display.poNumber}
+        material={poInfo.materialNumber}
+        sediaan={poInfo.sediaan}
+        operator={operator}
+        operators={poInfo.operators}
+        lineId={lineId}
+        onOperator={setOperator}
+        icon={<Box />}
+      />
 
-        <div className="rounded-lg border border-border bg-card p-3.5 space-y-3">
-          <h3 className="text-sm font-bold text-foreground leading-snug" data-testid="po-sku-name">
-            {display.skuName}
-          </h3>
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase">
-                Process Order
-              </p>
-              <p className="font-mono font-bold text-foreground" data-testid="po-number">
-                {display.poNumber}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase">Material</p>
-              <p className="font-mono font-bold text-foreground">{poInfo.materialNumber}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase">Sediaan</p>
-              <p className="font-mono font-bold text-foreground">{poInfo.sediaan}</p>
-            </div>
-          </div>
+      {/* CR 5: Run Rate SKU / Run Rate Line removed; target, actual and GAP replace them */}
+      <TargetBlock
+        testId="po-target"
+        target={po.target}
+        actual={po.actual}
+        scale={mpq}
+        scaleLabel="total MPQ"
+        reject={totalReject}
+        gap={po.gap}
+        gapMin={po.gapMin}
+        noStandard={po.noStandard}
+        frozen={snap.frozen}
+        formula={`${po.startPoint.toLocaleString()} + ${cur?.srr ?? 0} x ${po.scheduledMin} menit (maks. MPQ)`}
+      />
 
-          <div className="space-y-1 pt-1">
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase">
-              Operators
-            </label>
-            <select
-              value={operator}
-              onChange={(e) => setOperator(e.target.value)}
-              className="w-full rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs font-medium"
-            >
-              {poInfo.operators.map((op) => (
-                <option key={op} value={op}>
-                  {op} ({lineId})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </CardHeader>
+      <QaCounters testId="po-qa" qaStats={qaStats} icon={<ShieldCheck className="size-3.5" />} />
 
-      <CardContent className="space-y-4 p-4 text-xs">
-        {/* CR 5: Run Rate SKU / Run Rate Line removed; target, actual and GAP replace them */}
-        <TargetBlock
-          testId="po-target"
-          target={po.target}
-          actual={po.actual}
-          scale={mpq}
-          scaleLabel="total MPQ"
-          reject={totalReject}
-          gap={po.gap}
-          gapMin={po.gapMin}
-          noStandard={po.noStandard}
-          frozen={snap.frozen}
-          formula={`${po.startPoint.toLocaleString()} + ${cur?.srr ?? 0} x ${po.scheduledMin} menit (maks. MPQ)`}
-        />
-
-        {/* QA row */}
-        <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 p-3 text-xs">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="size-4 text-primary" />
-            <span className="font-bold text-foreground">QA Inspection</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono">
-            <span className="text-muted-foreground">
-              Sample: <b>{qaStats.sample}</b>
-            </span>
-            <span className="text-emerald-600 font-bold">
-              Released: <b>{qaStats.released}</b>
-            </span>
-            <span className="text-red-600 font-bold">
-              Reject: <b>{qaStats.reject}</b>
-            </span>
-          </div>
-        </div>
-
-        {/* Elapsed & Sisa row */}
-        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border text-xs">
-          <div className="flex items-center gap-2">
-            <Clock className="size-4 text-muted-foreground" />
-            <div>
-              <p className="text-[10px] uppercase text-muted-foreground font-semibold">Mulai PO</p>
-              <p className="font-mono font-medium text-foreground">{startDateStr}</p>
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2 text-right">
-            <div>
-              <p className="text-[10px] uppercase text-muted-foreground font-semibold">
-                Sisa Waktu
-              </p>
-              <p className="font-mono font-bold text-amber-600">{sisaStr}</p>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+      <div className="mt-auto flex flex-col gap-4">
+        <MulaiRow start={startDateStr} sisa={sisaStr} icon={<Clock />} testId="po-sisa" />
+      </div>
+    </FroCard>
   );
 }

@@ -1,9 +1,10 @@
 import { formatGapMin, formatGapPcs } from "@/lib/oee/targetEngine";
+import { BigOutput, label, text2 } from "./froUi";
 
 /**
  * CR 5 TG-01: from the top, bar TOTAL TARGET OUTPUT, bar TOTAL ACTUAL OUTPUT (same scale, both
  * filled), then scorecards GAP OUTPUT and GAP WAKTU. Without a standard (TG-09) the target bar and
- * both scorecards read "No standard".
+ * both scorecards read "No standard". Styled with the old design language (froUi).
  */
 export function TargetBlock({
   testId,
@@ -31,80 +32,60 @@ export function TargetBlock({
   formula?: string;
   frozen?: boolean;
 }) {
-  const pct = (v: number) => (scale > 0 ? Math.min(100, (v / scale) * 100) : 0);
   const good = gap >= 0;
   const tone = good
-    ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
-    : "border-red-300 bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200";
+    ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+    : "border-red-300 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200";
+  const pctOf = (v: number) => (scale > 0 ? ((v / scale) * 100).toFixed(1) : "0.0");
 
   return (
-    <div className="space-y-3" data-testid={testId} data-frozen={frozen ? "true" : "false"}>
+    <div className="flex flex-col gap-4" data-testid={testId} data-frozen={frozen ? "true" : "false"}>
       {/* TOTAL TARGET OUTPUT */}
-      <div className="space-y-2 rounded-lg border border-border bg-card p-4 shadow-xs">
-        <div className="flex items-baseline justify-between gap-2">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            Total Target Output
-          </p>
-          {formula && !noStandard && (
-            <span className="text-[10px] text-muted-foreground" data-testid={`${testId}-formula`}>
-              {formula}
-            </span>
-          )}
-        </div>
-        {noStandard ? (
-          <p data-testid={`${testId}-nostandard`} className="py-2 text-sm font-semibold text-muted-foreground">
+      {noStandard ? (
+        <div className="flex flex-col gap-0.5">
+          <p className={label}>Total Target Output</p>
+          <p data-testid={`${testId}-nostandard`} className={`text-xl font-bold tracking-[-0.5px] ${text2}`}>
             No standard
           </p>
-        ) : (
-          <>
-            <div className="flex items-baseline justify-between">
-              <span data-testid={`${testId}-target`} className="font-mono text-2xl font-extrabold text-foreground">
-                {target.toLocaleString()}
-              </span>
-              <span className="font-mono text-[11px] text-muted-foreground">
-                {scale > 0 ? ((target / scale) * 100).toFixed(1) : "0.0"}% dari {scaleLabel}
-              </span>
-            </div>
-            <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
-              <div className="h-full bg-amber-500 transition-all" style={{ width: `${pct(target)}%` }} />
-            </div>
-          </>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          <BigOutput
+            title="Total Target Output"
+            value={target}
+            valueTestId={`${testId}-target`}
+            note={`${pctOf(target)}% dari ${scaleLabel}`}
+            scale={scale}
+            barColor="var(--fro-rr-high)"
+          />
+          {formula && (
+            <p className={`text-[10px] ${text2}`} data-testid={`${testId}-formula`}>
+              {formula}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* TOTAL ACTUAL OUTPUT */}
-      <div className="space-y-2 rounded-lg border border-border bg-card p-4 shadow-xs">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-          Total Actual Output
-        </p>
-        <div className="flex items-baseline justify-between">
-          <div className="flex items-baseline gap-2">
-            <span data-testid={`${testId}-actual`} className="font-mono text-2xl font-extrabold text-foreground">
-              {actual.toLocaleString()}
-            </span>
-            <span className="font-mono text-sm font-bold text-red-600">({reject.toLocaleString()})</span>
-          </div>
-          <span className="font-mono text-[11px] font-bold text-muted-foreground">
-            {actual.toLocaleString()} / {scale.toLocaleString()} ({scale > 0 ? ((actual / scale) * 100).toFixed(1) : "0.0"}%)
-          </span>
-        </div>
-        <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full bg-primary transition-all" style={{ width: `${pct(actual)}%` }} />
-        </div>
-      </div>
+      <BigOutput
+        title="Total Actual Output"
+        value={actual}
+        valueTestId={`${testId}-actual`}
+        reject={reject}
+        note={`${actual.toLocaleString()} / ${scale.toLocaleString()} (${pctOf(actual)}%)`}
+        scale={scale}
+      />
 
       {/* Scorecards */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         <div
           data-testid={`${testId}-gap-output`}
           data-sign={noStandard ? "none" : good ? "pos" : "neg"}
-          className={`rounded-lg border p-3 ${noStandard ? "border-border bg-muted/30 text-muted-foreground" : tone}`}
+          className={`rounded-lg border px-3 py-2 ${noStandard ? "border-border bg-muted/30 text-muted-foreground" : tone}`}
         >
-          <p className="text-[10px] font-bold uppercase tracking-wider">GAP OUTPUT</p>
-          <p className="mt-1 font-mono text-xl font-extrabold">
-            <span data-testid={`${testId}-gap-output-value`}>
-              {noStandard ? "No standard" : formatGapPcs(gap)}
-            </span>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.08em]">GAP OUTPUT</p>
+          <p className="mt-1 text-xl font-bold tracking-[-0.5px]">
+            <span data-testid={`${testId}-gap-output-value`}>{noStandard ? "No standard" : formatGapPcs(gap)}</span>
             {!noStandard && gap !== 0 && <span className="ml-1 text-xs font-semibold">pcs</span>}
           </p>
           <p className="text-[10px]">
@@ -114,22 +95,18 @@ export function TargetBlock({
         <div
           data-testid={`${testId}-gap-time`}
           data-sign={noStandard ? "none" : good ? "pos" : "neg"}
-          className={`rounded-lg border p-3 ${noStandard ? "border-border bg-muted/30 text-muted-foreground" : tone}`}
+          className={`rounded-lg border px-3 py-2 ${noStandard ? "border-border bg-muted/30 text-muted-foreground" : tone}`}
         >
-          <p className="text-[10px] font-bold uppercase tracking-wider">GAP WAKTU</p>
-          <p className="mt-1 font-mono text-xl font-extrabold">
-            <span data-testid={`${testId}-gap-time-value`}>
-              {noStandard || gapMin === null ? "No standard" : formatGapMin(gapMin)}
-            </span>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.08em]">GAP WAKTU</p>
+          <p className="mt-1 text-xl font-bold tracking-[-0.5px]">
+            <span data-testid={`${testId}-gap-time-value`}>{noStandard || gapMin === null ? "No standard" : formatGapMin(gapMin)}</span>
             {!noStandard && gapMin !== null && <span className="ml-1 text-xs font-semibold">menit</span>}
           </p>
-          <p className="text-[10px]">
-            {noStandard ? "Standard belum tersedia" : good ? "Waktu terkejar" : "Waktu hilang"}
-          </p>
+          <p className="text-[10px]">{noStandard ? "Standard belum tersedia" : good ? "Waktu terkejar" : "Waktu hilang"}</p>
         </div>
       </div>
       {frozen && (
-        <p data-testid={`${testId}-frozen`} className="text-[10px] font-semibold text-muted-foreground">
+        <p data-testid={`${testId}-frozen`} className={`text-[10px] font-semibold ${text2}`}>
           Nilai dibekukan saat Finish Work Order.
         </p>
       )}

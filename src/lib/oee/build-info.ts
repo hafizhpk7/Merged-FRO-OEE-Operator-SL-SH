@@ -1,4 +1,4 @@
-export const BUILD_ID = "r52 · 10 Nov 2026 WIB · LEGACY-dashboard";
+export const BUILD_ID = "r53 · 10 Nov 2026 WIB · FRO-design-new-view";
 
 export const FEATURES = {
   routeTreeManualSync: true,
@@ -143,6 +143,8 @@ export const FEATURES = {
   dashboardVersionToggle: true,
   legacyDashboardView: true,
   legacyRunRateSelfTest: true,
+  froDesignNewView: true,
+  legacyCompareScript: true,
 };
 
 if (typeof window !== "undefined") {

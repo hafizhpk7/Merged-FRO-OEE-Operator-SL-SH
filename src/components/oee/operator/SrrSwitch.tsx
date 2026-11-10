@@ -29,7 +29,7 @@ export function SrrSwitch({ plantId, lineId }: { plantId: string; lineId: string
           data-mode={mode}
           onClick={() => srrStore.set(isLine ? "SKU" : "LINE")}
           className={`relative flex h-8 min-w-28 items-center rounded-full px-3 text-[11px] font-bold text-white transition-colors ${
-            isLine ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-700 hover:bg-blue-800"
+            isLine ? "bg-[var(--fro-ok)] hover:opacity-90" : "bg-primary hover:opacity-90"
           }`}
         >
           <span className={isLine ? "mr-6" : "ml-6"} data-testid="srr-switch-label">
@@ -41,7 +41,7 @@ export function SrrSwitch({ plantId, lineId }: { plantId: string; lineId: string
             }`}
           />
         </button>
-        <span className="font-mono text-xs font-bold text-foreground" data-testid="srr-value">
+        <span className="text-xs font-bold text-foreground" data-testid="srr-value">
           {std ? `${std} pcs/min` : "-"}
           {!isLine && cur && std ? (
             <span className="ml-1 font-sans text-[10px] font-semibold text-muted-foreground">
@@ -57,7 +57,7 @@ export function SrrSwitch({ plantId, lineId }: { plantId: string; lineId: string
         onClick={() =>
           void navigate({ to: "/operator/$plantId/$lineId/hourly", params: { plantId, lineId } })
         }
-        className="h-8 gap-1.5 text-xs font-semibold"
+        className="h-8 gap-1.5 border-border bg-card text-xs font-semibold"
       >
         <LayoutList className="size-3.5" />
         Realisasi per jam

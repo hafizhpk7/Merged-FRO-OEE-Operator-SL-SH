@@ -70,11 +70,11 @@ export function ceilRate(remainingPcs: number, remainingMin: number | null): num
 /** "-" for null, otherwise the integer. */
 export const fmtRate = (v: number | null): string => (v === null ? "-" : String(v));
 
-/** Where a run rate sits against its standard: red below 98 %, green 98-102 %, yellow above (config thresholds). */
-export function rateZone(actual: number | null, standard: number | null, redMax = 98, yellowMin = 102): "red" | "green" | "yellow" | "none" {
+/** Where a run rate sits against its standard (old UI bar, scale 0-200 %): red below 100 %, green 100-150 %, yellow above. */
+export function rateZone(actual: number | null, standard: number | null): "red" | "green" | "yellow" | "none" {
   if (actual === null || standard === null || standard <= 0) return "none";
-  const r = (actual / standard) * 100;
-  return r < redMax ? "red" : r > yellowMin ? "yellow" : "green";
+  const r = actual / standard;
+  return r < 1 ? "red" : r < 1.5 ? "green" : "yellow";
 }
 
 // ---- self test -------------------------------------------------------------------------------------------
@@ -104,7 +104,7 @@ export function runLegacyRunRateSelfTest(): { passed: boolean; results: Check[] 
   t("no standard -> null (no crash)", computeLegacyRunRates({ windows: w, nowSec: 600, poStartSec: 0, outputOee: 0, mpq: 1200, lineStandard: null }).targetRemaining === null);
   t("planned time over -> null", computeLegacyRunRates({ windows: w, nowSec: 3000, poStartSec: 0, outputOee: 0, mpq: 1200, lineStandard: 60 }).targetRemaining === null);
   t("fmtRate null -> '-'", fmtRate(null) === "-" && fmtRate(7) === "7");
-  t("zones", rateZone(50, 60) === "red" && rateZone(60, 60) === "green" && rateZone(70, 60) === "yellow" && rateZone(null, 60) === "none");
+  t("zones", rateZone(50, 60) === "red" && rateZone(60, 60) === "green" && rateZone(95, 60) === "yellow" && rateZone(70, 60) === "green" && rateZone(null, 60) === "none");
   return { passed: results.every((x) => x.ok), results };
 }
 

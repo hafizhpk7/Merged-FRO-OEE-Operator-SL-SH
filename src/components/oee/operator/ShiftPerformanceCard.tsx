@@ -1,8 +1,8 @@
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { OeeCard } from "./OeeCard";
 import { BarChart3 } from "lucide-react";
 import { TargetBlock } from "./TargetBlock";
 import { useTargetSnapshot } from "./useTargetSnapshot";
+import { FroCard, label, text2 } from "./froUi";
 import { formatTimeWib } from "@/lib/oee/shiftClock";
 
 export function ShiftPerformanceCard({
@@ -27,50 +27,34 @@ export function ShiftPerformanceCard({
         : "-";
 
   return (
-    <Card className="h-full min-w-0 border border-border bg-card shadow-xs">
-      <CardHeader className="border-b border-border bg-muted/20 pb-3">
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-8 items-center justify-center rounded bg-primary/10 text-primary">
-            <BarChart3 className="size-4" />
-          </span>
-          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Shift Performance
-          </span>
-        </div>
-        <div className="mt-2 rounded-lg border border-border bg-card p-3 text-xs">
-          <p className="font-bold text-foreground" data-testid="shift-title">
-            {snap.shift.label.replace(" WIB", "")}
-          </p>
-          <p className="mt-0.5 text-muted-foreground" data-testid="shift-projection">
-            Target shift (proyeksi){" "}
-            <span className="font-mono font-bold text-foreground">{s.projected.toLocaleString()}</span> pcs
-            {snap.mode === "SKU"
-              ? ` | dihitung ulang tiap changeover, saat ini ${runLabel}`
-              : ` | ${runLabel}`}
-            {" | "}
-            {formatTimeWib(snap.shift.startSec)} - {formatTimeWib(snap.shift.endSec)}
-          </p>
-        </div>
-      </CardHeader>
+    <FroCard testId="shift-card" tone="shift" icon={<BarChart3 />} title="Shift Performance" gap="gap-6">
+      <div className="flex flex-col gap-0.5">
+        <p className={label} data-testid="shift-title">
+          {snap.shift.label.replace(" WIB", "")} | {formatTimeWib(snap.shift.startSec)} - {formatTimeWib(snap.shift.endSec)}
+        </p>
+        <p className={`text-xs ${text2}`} data-testid="shift-projection">
+          Target shift (proyeksi) <span className="font-semibold text-foreground">{s.projected.toLocaleString()}</span> pcs
+          {snap.mode === "SKU" ? ` | dihitung ulang tiap changeover, saat ini ${runLabel}` : ` | ${runLabel}`}
+        </p>
+      </div>
 
-      <CardContent className="space-y-4 p-4 text-xs">
-        <TargetBlock
-          testId="shift-target"
-          target={s.target}
-          actual={s.actual}
-          scale={s.projected}
-          scaleLabel="target shift"
-          reject={totalReject}
-          gap={s.gap}
-          gapMin={s.gapMin}
-          noStandard={s.noStandard}
-          frozen={snap.frozen}
-          formula="jumlah per segmen SKU"
-        />
+      <TargetBlock
+        testId="shift-target"
+        target={s.target}
+        actual={s.actual}
+        scale={s.projected}
+        scaleLabel="target shift"
+        reject={totalReject}
+        gap={s.gap}
+        gapMin={s.gapMin}
+        noStandard={s.noStandard}
+        frozen={snap.frozen}
+        formula="jumlah per segmen SKU"
+      />
 
-        {/* OEE Card */}
+      <div>
         <OeeCard plantId={plantId} lineId={lineId} rejectCount={totalReject} />
-      </CardContent>
-    </Card>
+      </div>
+    </FroCard>
   );
 }

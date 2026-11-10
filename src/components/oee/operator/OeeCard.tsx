@@ -1,6 +1,4 @@
 import { useState, useMemo } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +13,27 @@ import { useViewShift } from "@/lib/oee/viewShiftStore";
 import { useSimDataVersion, useSimWindowBucket } from "@/lib/oee/useSimTick";
 import { OEE_CARD_FOLLOWS_SRR_SWITCH } from "@/lib/oee/config";
 import { useSrrMode } from "@/lib/oee/srrStore";
+import { label } from "./froUi";
+
+/** SKU / Line pill switch of the old UI (blue = SKU, knob on the right). */
+function SkuLineSwitch({ skuOn, onChange }: { skuOn: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={skuOn}
+      aria-label="SKU / Line"
+      data-testid="legacy-oee-toggle"
+      data-mode={skuOn ? "sku" : "line"}
+      onClick={() => onChange(!skuOn)}
+      className={`relative h-[26px] w-[94px] shrink-0 rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${skuOn ? "bg-[#3b82f6]" : "bg-zinc-400"}`}
+    >
+      <span className={`absolute inset-y-0 left-1.5 flex w-[66px] items-center justify-center text-xs font-bold text-white ${skuOn ? "" : "opacity-0"}`}>SKU</span>
+      <span aria-hidden={skuOn} className={`absolute inset-y-0 right-1.5 flex w-[66px] items-center justify-center text-xs font-bold text-white ${skuOn ? "opacity-0" : ""}`}>Line</span>
+      <span className={`absolute top-1 size-[18px] rounded-full border border-black/5 bg-white transition-all ${skuOn ? "right-1" : "left-1"}`} />
+    </button>
+  );
+}
 
 export function OeeCard({
   plantId,
@@ -33,7 +52,6 @@ export function OeeCard({
   const [localSkuOn, setLocalSkuOn] = useState(true);
   const followSwitch = OEE_CARD_FOLLOWS_SRR_SWITCH && !ownToggle;
   const skuOn = followSwitch ? srrMode === "SKU" : localSkuOn;
-  const setSkuOn = setLocalSkuOn;
   const [expandOpen, setExpandOpen] = useState(false);
 
   const lineObj =
@@ -53,116 +71,76 @@ export function OeeCard({
   const formatPct = (val: number) => `${val.toFixed(2)}%`;
   const cappedPerf = Math.min(100, lineMetrics.performancePct);
 
+  const bar = (name: string, value: number, pct: number, color: string, testId: string) => (
+    <div className="flex min-w-0 flex-col gap-1" data-testid={testId}>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className={label}>{name}</p>
+        <p className="text-sm font-bold">{formatPct(value)}</p>
+      </div>
+      <div className="h-2.5 w-full overflow-hidden rounded-full bg-[color:var(--fro-track)]">
+        <div className="h-full" style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: color }} />
+      </div>
+    </div>
+  );
+
   return (
     <>
-      <Card className="border border-amber-500/40 bg-amber-500/5 dark:bg-amber-950/10 shadow-xs">
-        <CardContent className="p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
-                Overall Equipment Effectiveness
-              </h4>
-            </div>
-            <div className="flex items-center gap-2">
+      <div className="rounded-lg p-4" style={{ background: "var(--fro-oee-card-bg)" }} data-testid="oee-card">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-base font-semibold">Overall Equipment Effectiveness</p>
+            <div className="flex shrink-0 items-center gap-2">
               {followSwitch ? (
                 <span
                   data-testid="oee-card-srr"
-                  className="rounded bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground"
+                  className="inline-flex h-[26px] w-[94px] items-center justify-center rounded-full bg-[#3b82f6] text-xs font-bold text-white"
                 >
                   {srrMode === "SKU" ? "SRR SKU" : "SRR Line"}
                 </span>
               ) : (
-                ownToggle ? (
-                  <div className="inline-flex rounded-md border border-border p-0.5" role="group" aria-label="SKU / Line" data-testid="legacy-oee-toggle">
-                    {([[true, "SKU"], [false, "Line"]] as const).map(([v, label]) => (
-                      <button
-                        key={label}
-                        type="button"
-                        aria-pressed={skuOn === v}
-                        data-testid={`legacy-oee-${label.toLowerCase()}`}
-                        onClick={() => setSkuOn(v)}
-                        className={`rounded px-2.5 py-1 text-[11px] font-bold transition-colors ${skuOn === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                <button
-                  onClick={() => setSkuOn(!skuOn)}
-                  className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-[11px] font-bold text-white transition-colors ${
-                    skuOn ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
-                  }`}
-                >
-                  {skuOn ? "SKU-ON" : "SKU-OFF"}
-                </button>
-                )
+                <SkuLineSwitch skuOn={skuOn} onChange={setLocalSkuOn} />
               )}
-              <Button
-                variant="ghost"
-                size="icon"
+              <button
+                type="button"
+                aria-label="Detail OEE per mesin"
                 onClick={() => setExpandOpen(true)}
-                className="size-7 text-muted-foreground hover:text-foreground"
+                className="flex size-9 items-center justify-center rounded text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Maximize2 className="size-4" />
-              </Button>
+              </button>
             </div>
           </div>
 
-          {/* Donut & A/P/Q Bars */}
-          <div className="flex flex-col items-center justify-center py-2">
-            <div className="relative flex size-32 items-center justify-center rounded-full border-8 border-primary/20 bg-card shadow-inner">
-              <div className="absolute inset-0 rounded-full border-8 border-primary border-t-transparent animate-spin-slow" />
-              <div className="text-center">
-                <span className="text-2xl font-extrabold font-mono text-foreground">
-                  {lineMetrics.oeePct.toFixed(1)}%
-                </span>
-                <span className="block text-[10px] font-bold text-muted-foreground uppercase">
-                  OEE Line
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2.5 pt-2">
-            <div className="space-y-1">
-              <div className="flex justify-between text-[11px] font-semibold">
-                <span>AVA (Availability)</span>
-                <span className="font-mono">{formatPct(lineMetrics.availabilityPct)}</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full bg-emerald-600"
-                  style={{ width: `${lineMetrics.availabilityPct}%` }}
+          {/* Donut */}
+          <div className="flex justify-center py-2">
+            <div className="relative flex size-[180px] items-center justify-center" data-testid="oee-donut">
+              <svg viewBox="0 0 120 120" className="absolute inset-0 size-full -rotate-90" aria-hidden>
+                <circle cx="60" cy="60" r="52" fill="none" strokeWidth="9" stroke="var(--fro-track)" />
+                <circle
+                  cx="60"
+                  cy="60"
+                  r="52"
+                  fill="none"
+                  strokeWidth="9"
+                  strokeLinecap="round"
+                  stroke="var(--fro-ring)"
+                  pathLength={100}
+                  strokeDasharray={`${Math.min(100, Math.max(0, lineMetrics.oeePct))} 100`}
                 />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex justify-between text-[11px] font-semibold">
-                <span>PER (Performance)</span>
-                <span className="font-mono">{formatPct(lineMetrics.performancePct)}</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div className="h-full bg-blue-600" style={{ width: `${cappedPerf}%` }} />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex justify-between text-[11px] font-semibold">
-                <span>QUA (Quality)</span>
-                <span className="font-mono">{formatPct(lineMetrics.qualityPct)}</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full bg-purple-600"
-                  style={{ width: `${lineMetrics.qualityPct}%` }}
-                />
-              </div>
+              </svg>
+              <p className="font-bold tracking-[-0.025em]" style={{ fontSize: 33 }} data-testid="oee-value">
+                {lineMetrics.oeePct.toFixed(2)}%
+              </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+
+          <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-3">
+            {bar("AVA", lineMetrics.availabilityPct, lineMetrics.availabilityPct, "var(--fro-ok)", "oee-ava")}
+            {bar("PER", lineMetrics.performancePct, cappedPerf, "var(--fro-warn)", "oee-per")}
+            {bar("QUA", lineMetrics.qualityPct, lineMetrics.qualityPct, "var(--fro-info)", "oee-qua")}
+          </div>
+        </div>
+      </div>
 
       {/* Expand Modal: Detail OEE per Machine */}
       <Dialog open={expandOpen} onOpenChange={setExpandOpen}>
@@ -180,10 +158,10 @@ export function OeeCard({
               <p className="text-xs font-bold uppercase text-muted-foreground">
                 Line OEE Summary ({srrMode === "SKU" ? "SRR SKU" : "SRR Line"})
               </p>
-              <div className="text-3xl font-extrabold font-mono text-primary">
+              <div className="text-3xl font-extrabold text-primary">
                 {lineMetrics.oeePct.toFixed(2)}%
               </div>
-              <div className="grid grid-cols-3 gap-4 pt-2 text-xs font-mono">
+              <div className="grid grid-cols-3 gap-4 pt-2 text-xs">
                 <div>
                   AVA: <b>{formatPct(lineMetrics.availabilityPct)}</b>
                 </div>
@@ -211,25 +189,25 @@ export function OeeCard({
                       className="rounded-lg border border-border bg-card p-4 space-y-3"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold font-mono text-foreground">
+                        <span className="text-xs font-bold text-foreground">
                           {m.code} — {m.name}
                         </span>
-                        <span className="text-sm font-extrabold font-mono text-primary">
+                        <span className="text-sm font-extrabold text-primary">
                           {mM.oeePct.toFixed(1)}% OEE
                         </span>
                       </div>
                       <div className="grid grid-cols-3 gap-3 text-xs">
                         <div>
                           <p className="text-[10px] text-muted-foreground">AVA</p>
-                          <p className="font-mono font-bold">{formatPct(mM.availabilityPct)}</p>
+                          <p className="font-bold">{formatPct(mM.availabilityPct)}</p>
                         </div>
                         <div>
                           <p className="text-[10px] text-muted-foreground">PER</p>
-                          <p className="font-mono font-bold">{formatPct(mM.performancePct)}</p>
+                          <p className="font-bold">{formatPct(mM.performancePct)}</p>
                         </div>
                         <div>
                           <p className="text-[10px] text-muted-foreground">QUA</p>
-                          <p className="font-mono font-bold">{formatPct(mM.qualityPct)}</p>
+                          <p className="font-bold">{formatPct(mM.qualityPct)}</p>
                         </div>
                       </div>
                     </div>

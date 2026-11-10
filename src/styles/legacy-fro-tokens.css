@@ -47,7 +47,7 @@
   --tier-warn: oklch(0.646 0.194 41.1); /* #ea580c */
   --tier-bad: oklch(0.577 0.215 27.3); /* #dc2626 */
   /* typography: Inter first, then the system stack of the old UI */
-  --fro-font: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  --fro-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
   /* Chakra card shadow: 0 2px 4px rgba(24,24,27,.1), 0 0 1px rgba(24,24,27,.3) */
   --fro-shadow: 0 2px 4px 0 rgb(24 24 27 / 0.1), 0 0 1px 0 rgb(24 24 27 / 0.3);
   /* run rate bar segments (red / green / yellow) and marker */
@@ -127,4 +127,59 @@
 .fro-theme .shadow-xs,
 .fro-theme .shadow-sm {
   box-shadow: var(--fro-shadow);
+}
+
+/* Layout/typography tokens measured on the saved MES page (docs/legacy/design-tokens.md, scripts/legacy-compare.mjs). */
+.fro-theme {
+  --fro-page: rgb(244 244 245); /* main background, zinc-100 */
+  --fro-track: rgb(244 244 245); /* progress track */
+  --fro-card-border: rgb(250 250 250);
+  --fro-label: rgb(0 0 0 / 0.64); /* 10px uppercase labels */
+  --fro-text-2: rgb(82 82 91); /* zinc-600 secondary text */
+  --fro-zebra: rgb(250 250 250); /* Mulai box */
+  --fro-red-text: #ff0000;
+  --fro-qa-green: #116932;
+  --fro-qa-red: #991919;
+  --fro-ring: rgb(139 175 60);
+}
+.dark .fro-theme,
+.fro-theme.dark {
+  --fro-page: rgb(9 9 11);
+  --fro-track: rgb(39 39 42);
+  --fro-card-border: rgb(39 39 42);
+  --fro-label: rgb(255 255 255 / 0.64);
+  --fro-text-2: rgb(161 161 170);
+  --fro-zebra: rgb(24 24 27);
+  --fro-red-text: #f87171;
+  --fro-qa-green: #86efac;
+  --fro-qa-red: #fca5a5;
+}
+
+/* Three-block dashboard grid (Inline Device Weigher, Process Order Performance, Shift Performance). */
+.fro-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-items: stretch;
+  flex: 1 1 auto;
+}
+@media (min-width: 768px) {
+  .fro-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fro-grid > :nth-child(3) { grid-column: span 2; }
+}
+@media (min-width: 1280px) {
+  .fro-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .fro-grid > :nth-child(3) { grid-column: auto; }
+}
+
+.fro-theme .page-fill { gap: 8px; }
+
+/* The saved page uses 1.5 line height for the text sizes below (Tailwind defaults are tighter). */
+.fro-theme {
+  --text-xs--line-height: 1.5;
+  --text-sm--line-height: 1.5;
+  --text-base--line-height: 1.5;
+  --text-lg--line-height: 1.5;
+  --text-xl--line-height: 1.5;
+  line-height: 1.5;
 }
